@@ -21,7 +21,7 @@ use i3ipc::{I3Connection, I3EventListener, Subscription};
 use i3ipc::event::Event;
 use i3ipc::event::inner::WindowChange;
 
-static BUFFER_SIZE: usize = 10;
+static BUFFER_SIZE: usize = 100;
 
 fn socket_filename() -> String {
     env::var("HOME").unwrap() + "/.local/share/i3-focus-last.sock"
@@ -31,6 +31,29 @@ fn socket_filename() -> String {
 #[derive(Serialize, Deserialize, Debug)]
 enum Cmd {
     SwitchTo(usize),
+}
+
+fn focus_nth(windows: &VecDeque<i64>, n: usize) -> Result<(), String> {
+    let mut conn = I3Connection::connect().unwrap();
+    let mut k = n;
+
+    // Start from the nth window and try to change focus until it succeeds
+    // (so that it skips windows which no longer exist)
+    while let Some(wid) = windows.get(k) {
+        let r = try!(conn.run_command(format!("[con_id={}] focus", wid).as_str())
+                     .map_err(move |e| e.description().to_string()));
+
+        let r = try!(r.outcomes.get(0)
+                     .ok_or("No response for command"));
+
+        if r.success {
+            return Ok(());
+        }
+
+        k += 1;
+    }
+
+    Err(format!("Last {}nth window unavailable", n))
 }
 
 fn cmd_server(windows: Arc<Mutex<VecDeque<i64>>>) {
@@ -49,15 +72,13 @@ fn cmd_server(windows: Arc<Mutex<VecDeque<i64>>>) {
             let winc = Arc::clone(&windows);
 
             thread::spawn(move || {
-                let mut conn = I3Connection::connect().unwrap();
                 let cmd = rmp_serde::from_read::<_, Cmd>(stream);
 
-                if let Ok(Cmd::SwitchTo(nth)) = cmd {
+                if let Ok(Cmd::SwitchTo(n)) = cmd {
                     let winc = winc.lock().unwrap();
 
-                    if let Some(wid) = winc.get(nth) {
-                        conn.run_command(format!("[con_id={}] focus", wid).as_str()).ok();
-                    }
+                    // This can fail, that's fine
+                    focus_nth(&winc, n).ok();
                 }
             });
         }
@@ -81,11 +102,13 @@ fn focus_server() {
                 if let WindowChange::Focus = e.change {
                     let mut windows = windows.lock().unwrap();
 
+                    // dedupe, push front and truncate
+                    windows.retain(|v| *v != e.container.id);
                     windows.push_front(e.container.id);
                     windows.truncate(BUFFER_SIZE);
                 }
             }
-            _ => unreachable!()
+            _ => unreachable!(),
         }
     }
 }
