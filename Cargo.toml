@@ -1,0 +1,11 @@
+[package]
+name = "i3-focus-last"
+version = "0.1.0"
+authors = ["lbonn"]
+
+[dependencies]
+i3ipc = "0.8.1"
+clap = "2.16.1"
+rmp-serde = "0.13.7"
+serde = "1.0.15"
+serde_derive = "1.0.15"
