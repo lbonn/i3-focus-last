@@ -12,14 +12,14 @@ use std::collections::VecDeque;
 use std::fs;
 use std::path::Path;
 use std::io::Write;
-use std::sync::Arc;
-use std::sync::Mutex;
+use std::os::unix::net::{UnixListener, UnixStream};
+use std::sync::{Arc, Mutex};
 use std::thread;
+
 use clap::{App, Arg, SubCommand};
 use i3ipc::{I3Connection, I3EventListener, Subscription};
 use i3ipc::event::Event;
 use i3ipc::event::inner::WindowChange;
-use std::os::unix::net::{UnixListener, UnixStream};
 
 static BUFFER_SIZE: usize = 10;
 
@@ -108,12 +108,14 @@ fn main() {
                               .value_name("N")
                               .help("nth widow to focus")
                               .default_value("1")
-                              .validator(|v| v.parse::<usize>().map_err(|e| String::from(e.description()))
-                                                               .and_then(|v| if v > 0 && v <= BUFFER_SIZE { Ok(v) }
-                                                                           else { Err(String::from("invalid n")) }
-                                                                        )
-                                                               .map(|_| ())
-                                                             ))
+                              .validator(|v| {
+                                  v.parse::<usize>()
+                                      .map_err(|e| String::from(e.description()))
+                                      .and_then(|v| if v > 0 && v <= BUFFER_SIZE { Ok(v) }
+                                                else { Err(String::from("invalid n")) }
+                                               )
+                                      .map(|_| ())
+                              }))
                           .get_matches();
 
     if matches.subcommand_matches("server").is_some() {
