@@ -2,6 +2,9 @@
 name = "i3-focus-last"
 version = "0.1.0"
 authors = ["lbonn"]
+description = "Focus last window on i3"
+license = "MIT"
+repository = "https://github.com/lbonn/i3-focus-last"
 
 [dependencies]
 i3ipc = "0.8.1"
