@@ -44,7 +44,7 @@ fn cmd_server(windows: Arc<Mutex<VecDeque<i64>>>) {
 
     for stream in listener.incoming() {
         if let Ok(stream) = stream {
-            let winc = windows.clone();
+            let winc = Arc::clone(&windows);
 
             thread::spawn(move || {
                 let mut conn = I3Connection::connect().unwrap();
@@ -54,7 +54,7 @@ fn cmd_server(windows: Arc<Mutex<VecDeque<i64>>>) {
                     let winc = winc.lock().unwrap();
 
                     if let Some(wid) = winc.get(nth) {
-                        conn.run_command(format!("[con_id={}] focus", wid).as_str());
+                        conn.run_command(format!("[con_id={}] focus", wid).as_str()).ok();
                     }
                 }
             });
@@ -93,7 +93,8 @@ fn focus_client(nth_window: usize) {
     let mut stream = UnixStream::connect(socket_filename()).unwrap();
 
     rmp_serde::to_vec(&Cmd::SwitchTo(nth_window))
-        .map(move |b| stream.write_all(b.as_slice()));
+        .map(move |b| stream.write_all(b.as_slice()))
+        .ok();
 }
 
 fn main() {
@@ -113,7 +114,7 @@ fn main() {
                                                              ))
                           .get_matches();
 
-    if let Some(_) = matches.subcommand_matches("server") {
+    if matches.subcommand_matches("server").is_some() {
         focus_server();
     } else {
         focus_client(matches.value_of("nth_window").unwrap().parse().unwrap());
