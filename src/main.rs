@@ -27,6 +27,7 @@ fn socket_filename() -> String {
     env::var("HOME").unwrap() + "/.local/share/i3-focus-last.sock"
 }
 
+/// Commands sent for client-server interfacing
 #[derive(Serialize, Deserialize, Debug)]
 enum Cmd {
     SwitchTo(usize),
@@ -40,6 +41,7 @@ fn cmd_server(windows: Arc<Mutex<VecDeque<i64>>>) {
         fs::remove_file(&socket).unwrap();
     }
 
+    // Listen to client commands
     let listener = UnixListener::bind(socket).unwrap();
 
     for stream in listener.incoming() {
@@ -77,7 +79,6 @@ fn focus_server() {
         match event.unwrap() {
             Event::WindowEvent(e) => {
                 if let WindowChange::Focus = e.change {
-                    //let mut windows = Mutex::make_mut(&mut windows);
                     let mut windows = windows.lock().unwrap();
 
                     windows.push_front(e.container.id);
@@ -92,6 +93,7 @@ fn focus_server() {
 fn focus_client(nth_window: usize) {
     let mut stream = UnixStream::connect(socket_filename()).unwrap();
 
+    // Just send a command to the server
     rmp_serde::to_vec(&Cmd::SwitchTo(nth_window))
         .map(move |b| stream.write_all(b.as_slice()))
         .ok();
