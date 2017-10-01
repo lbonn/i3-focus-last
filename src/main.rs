@@ -148,7 +148,7 @@ fn main() {
                           .arg(Arg::with_name("nth_window")
                               .short("n")
                               .value_name("N")
-                              .help("nth widow to focus")
+                              .help("nth window to focus")
                               .default_value("1")
                               .validator(|v| {
                                   v.parse::<usize>()
