@@ -85,10 +85,29 @@ fn cmd_server(windows: Arc<Mutex<VecDeque<i64>>>) {
     }
 }
 
+fn get_focused_window() -> Result<i64, ()> {
+    let mut conn = I3Connection::connect().unwrap();
+    let mut node = conn.get_tree().unwrap();
+
+    while !node.focused {
+        let fid = try!(node.focus.into_iter().nth(0).ok_or(()));
+        node = try!(node.nodes.into_iter().filter(|n| n.id == fid).nth(0).ok_or(()));
+    }
+
+    Ok(node.id)
+}
+
 fn focus_server() {
     let mut listener = I3EventListener::connect().unwrap();
     let windows = Arc::new(Mutex::new(VecDeque::new()));
     let windowsc = Arc::clone(&windows);
+
+    // Add the current focused window to bootstrap the list
+    get_focused_window().map(|wid| {
+        let mut windows = windows.lock().unwrap();
+
+        windows.push_front(wid);
+    }).ok();
 
     thread::spawn(|| cmd_server(windowsc));
 
