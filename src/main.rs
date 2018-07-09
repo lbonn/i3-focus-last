@@ -33,18 +33,16 @@ enum Cmd {
     SwitchTo(usize),
 }
 
-fn focus_nth(windows: &VecDeque<i64>, n: usize) -> Result<(), String> {
+fn focus_nth(windows: &VecDeque<i64>, n: usize) -> Result<(), Box<Error>> {
     let mut conn = I3Connection::connect().unwrap();
     let mut k = n;
 
     // Start from the nth window and try to change focus until it succeeds
     // (so that it skips windows which no longer exist)
     while let Some(wid) = windows.get(k) {
-        let r = try!(conn.run_command(format!("[con_id={}] focus", wid).as_str())
-                     .map_err(move |e| e.description().to_string()));
+        let r = conn.run_command(format!("[con_id={}] focus", wid).as_str())?;
 
-        let r = try!(r.outcomes.get(0)
-                     .ok_or("No response for command"));
+        let r = r.outcomes.get(0).ok_or("No reponse for command")?;
 
         if r.success {
             return Ok(());
@@ -53,7 +51,7 @@ fn focus_nth(windows: &VecDeque<i64>, n: usize) -> Result<(), String> {
         k += 1;
     }
 
-    Err(format!("Last {}nth window unavailable", n))
+    Err(From::from(format!("Last {}nth window unavailable", n)))
 }
 
 fn cmd_server(windows: Arc<Mutex<VecDeque<i64>>>) {
@@ -90,8 +88,8 @@ fn get_focused_window() -> Result<i64, ()> {
     let mut node = conn.get_tree().unwrap();
 
     while !node.focused {
-        let fid = try!(node.focus.into_iter().nth(0).ok_or(()));
-        node = try!(node.nodes.into_iter().filter(|n| n.id == fid).nth(0).ok_or(()));
+        let fid = node.focus.into_iter().nth(0).ok_or(())?;
+        node = node.nodes.into_iter().filter(|n| n.id == fid).nth(0).ok_or(())?;
     }
 
     Ok(node.id)
