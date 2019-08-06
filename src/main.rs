@@ -3,7 +3,7 @@ extern crate serde_derive;
 
 extern crate clap;
 extern crate i3ipc;
-extern crate rmp_serde;
+extern crate serde_json;
 extern crate serde;
 
 use std::env;
@@ -70,7 +70,7 @@ fn cmd_server(windows: Arc<Mutex<VecDeque<i64>>>) {
             let winc = Arc::clone(&windows);
 
             thread::spawn(move || {
-                let cmd = rmp_serde::from_read::<_, Cmd>(stream);
+                let cmd = serde_json::from_reader::<_, Cmd>(stream);
 
                 if let Ok(Cmd::SwitchTo(n)) = cmd {
                     let winc = winc.lock().unwrap();
@@ -134,7 +134,7 @@ fn focus_client(nth_window: usize) {
     let mut stream = UnixStream::connect(socket_filename()).unwrap();
 
     // Just send a command to the server
-    rmp_serde::to_vec(&Cmd::SwitchTo(nth_window))
+    serde_json::to_vec(&Cmd::SwitchTo(nth_window))
         .map(move |b| stream.write_all(b.as_slice()))
         .ok();
 }
