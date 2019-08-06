@@ -143,6 +143,7 @@ fn main() {
     let matches = App::new("i3-focus-last")
                           .subcommand(SubCommand::with_name("server")
                                      .about("Run in server mode"))
+                          .version(env!("CARGO_PKG_VERSION"))
                           .arg(Arg::with_name("nth_window")
                               .short("n")
                               .value_name("N")
