@@ -42,7 +42,7 @@ fn focus_nth(windows: &VecDeque<i64>, n: usize) -> Result<(), Box<dyn Error>> {
     while let Some(wid) = windows.get(k) {
         let r = conn.run_command(format!("[con_id={}] focus", wid).as_str())?;
 
-        if let Ok(o) = r.outcomes.get(0).ok_or("No response for command") {
+        if let Some(o) = r.outcomes.get(0) {
             if o.success {
                 return Ok(());
             }
