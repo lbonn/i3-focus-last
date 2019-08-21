@@ -33,7 +33,7 @@ enum Cmd {
     SwitchTo(usize),
 }
 
-fn focus_nth(windows: &VecDeque<i64>, n: usize) -> Result<(), Box<Error>> {
+fn focus_nth(windows: &VecDeque<i64>, n: usize) -> Result<(), Box<dyn Error>> {
     let mut conn = I3Connection::connect().unwrap();
     let mut k = n;
 
@@ -42,10 +42,10 @@ fn focus_nth(windows: &VecDeque<i64>, n: usize) -> Result<(), Box<Error>> {
     while let Some(wid) = windows.get(k) {
         let r = conn.run_command(format!("[con_id={}] focus", wid).as_str())?;
 
-        let r = r.outcomes.get(0).ok_or("No reponse for command")?;
-
-        if r.success {
-            return Ok(());
+        if let Ok(o) = r.outcomes.get(0).ok_or("No response for command") {
+            if o.success {
+                return Ok(());
+            }
         }
 
         k += 1;
