@@ -5,7 +5,7 @@ i3-focus-last
 
 Another implementation of this classic (and useful) example of i3 ipc use.
 
-Works on reasonable versions of i3 and sway's master branch.
+Works on reasonable versions of i3 and sway >= 1.2.
 
 Done in [rust](https://www.rust-lang.org):
 
