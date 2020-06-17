@@ -10,6 +10,7 @@ use std::env;
 use std::error::Error;
 use std::collections::VecDeque;
 use std::fs;
+use std::net::Shutdown;
 use std::path::Path;
 use std::io::Write;
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -20,6 +21,7 @@ use clap::{App, Arg, SubCommand};
 use i3ipc::{I3Connection, I3EventListener, Subscription};
 use i3ipc::event::Event;
 use i3ipc::event::inner::WindowChange;
+use serde::Deserialize;
 
 static BUFFER_SIZE: usize = 100;
 
@@ -31,6 +33,7 @@ fn socket_filename() -> String {
 #[derive(Serialize, Deserialize, Debug)]
 enum Cmd {
     SwitchTo(usize),
+    GetHistory,
 }
 
 fn focus_nth(windows: &VecDeque<i64>, n: usize) -> Result<(), Box<dyn Error>> {
@@ -70,14 +73,26 @@ fn cmd_server(windows: Arc<Mutex<VecDeque<i64>>>) {
             let winc = Arc::clone(&windows);
 
             thread::spawn(move || {
-                let cmd = serde_json::from_reader::<_, Cmd>(stream);
+                //let cmd = serde_json::from_reader::<_, Cmd>(&stream);
+                let mut de = serde_json::Deserializer::from_reader(&stream);
+                let cmd = Cmd::deserialize(&mut de);
 
-                if let Ok(Cmd::SwitchTo(n)) = cmd {
-                    let winc = winc.lock().unwrap();
+                match cmd {
+                    Ok(Cmd::SwitchTo(n)) => {
+                        let winc = winc.lock().unwrap();
 
-                    // This can fail, that's fine
-                    focus_nth(&winc, n).ok();
+                        // This can fail, that's fine
+                        focus_nth(&winc, n).ok();
+                    }
+                    Ok(Cmd::GetHistory) => {
+                        let winc = winc.lock().unwrap();
+                        let _ = serde_json::to_writer(&stream, &*winc);
+                    }
+                    _ => {
+                        let _ = serde_json::to_writer(&stream, "invalid command");
+                    }
                 }
+                let _ = stream.shutdown(Shutdown::Both);
             });
         }
     }
@@ -151,7 +166,7 @@ fn main() {
                               .default_value("1")
                               .validator(|v| {
                                   v.parse::<usize>()
-                                      .map_err(|e| String::from(e.description()))
+                                      .map_err(|e| String::from(e.to_string()))
                                       .and_then(|v| if v > 0 && v <= BUFFER_SIZE { Ok(v) }
                                                 else { Err(String::from("invalid n")) }
                                                )
