@@ -103,8 +103,8 @@ fn get_focused_window() -> Result<i64, ()> {
     let mut node = conn.get_tree().unwrap();
 
     while !node.focused {
-        let fid = node.focus.into_iter().nth(0).ok_or(())?;
-        node = node.nodes.into_iter().filter(|n| n.id == fid).nth(0).ok_or(())?;
+        let fid = node.focus.into_iter().next().ok_or(())?;
+        node = node.nodes.into_iter().find(|n| n.id == fid).ok_or(())?;
     }
 
     Ok(node.id)
