@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate serde_derive;
 
-extern crate clap;
+extern crate gumdrop;
 extern crate i3ipc;
 extern crate serde_json;
 extern crate serde;
@@ -17,7 +17,8 @@ use std::os::unix::net::{UnixListener, UnixStream};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use clap::{App, Arg, SubCommand};
+//use clap::{App, Arg, SubCommand};
+use gumdrop::Options;
 use i3ipc::{I3Connection, I3EventListener, Subscription};
 use i3ipc::event::Event;
 use i3ipc::event::inner::WindowChange;
@@ -154,29 +155,47 @@ fn focus_client(nth_window: usize) {
         .ok();
 }
 
-fn main() {
-    let matches = App::new("i3-focus-last")
-                          .subcommand(SubCommand::with_name("server")
-                                     .about("Run in server mode"))
-                          .version(env!("CARGO_PKG_VERSION"))
-                          .arg(Arg::with_name("nth_window")
-                              .short("n")
-                              .value_name("N")
-                              .help("nth window to focus")
-                              .default_value("1")
-                              .validator(|v| {
-                                  v.parse::<usize>()
-                                      .map_err(|e| String::from(e.to_string()))
-                                      .and_then(|v| if v > 0 && v <= BUFFER_SIZE { Ok(v) }
-                                                else { Err(String::from("invalid n")) }
-                                               )
-                                      .map(|_| ())
-                              }))
-                          .get_matches();
+#[derive(Debug, Options)]
+enum Command {
+    #[options(help = "switch")]
+    Switch(SwitchOpts),
+    #[options(help = "start server")]
+    Server(ServerOpts),
+}
 
-    if matches.subcommand_matches("server").is_some() {
-        focus_server();
-    } else {
-        focus_client(matches.value_of("nth_window").unwrap().parse().unwrap());
+#[derive(Debug, Options)]
+struct SwitchOpts {
+    #[options(help = "nth window to focus", no_long, short = "n", default = "1")]
+    count: usize,
+}
+
+#[derive(Debug, Options)]
+struct ServerOpts {}
+
+#[derive(Debug, Options)]
+struct ProgOptions {
+    #[options(help = "help")]
+    help: bool,
+
+    #[options(help = "version")]
+    version: bool,
+
+    #[options(command)]
+    command: Option<Command>,
+}
+
+
+fn main() {
+    let opts = ProgOptions::parse_args_default_or_exit();
+
+    if opts.version {
+        println!("i3-focus-last {}", env!("CARGO_PKG_VERSION"));
+        return;
+    }
+
+    match opts.command {
+        Some(Command::Server(_)) => { focus_server(); }
+        Some(Command::Switch(o)) => { focus_client(o.count); }
+        _ => { focus_client(1); }
     }
 }

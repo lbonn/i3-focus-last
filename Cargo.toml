@@ -8,7 +8,7 @@ repository = "https://github.com/lbonn/i3-focus-last"
 
 [dependencies]
 i3ipc = "0.10.0"
-clap = "2.32.0"
+gumdrop = "0.8.0"
 serde = "1.0"
 serde_derive = "1.0"
 serde_json = "1.0"
