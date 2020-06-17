@@ -9,17 +9,21 @@ extern crate serde;
 use std::env;
 use std::error::Error;
 use std::collections::VecDeque;
+use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fs;
 use std::net::Shutdown;
 use std::path::Path;
 use std::io::Write;
 use std::os::unix::net::{UnixListener, UnixStream};
+use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
+use std::str::from_utf8;
 use std::thread;
 
-//use clap::{App, Arg, SubCommand};
 use gumdrop::Options;
 use i3ipc::{I3Connection, I3EventListener, Subscription};
+use i3ipc::reply::{Node,NodeType};
 use i3ipc::event::Event;
 use i3ipc::event::inner::WindowChange;
 use serde::Deserialize;
@@ -74,7 +78,6 @@ fn cmd_server(windows: Arc<Mutex<VecDeque<i64>>>) {
             let winc = Arc::clone(&windows);
 
             thread::spawn(move || {
-                //let cmd = serde_json::from_reader::<_, Cmd>(&stream);
                 let mut de = serde_json::Deserializer::from_reader(&stream);
                 let cmd = Cmd::deserialize(&mut de);
 
@@ -155,12 +158,125 @@ fn focus_client(nth_window: usize) {
         .ok();
 }
 
+fn extract_windows<'a>(root: &'a Node) -> HashMap<i64, &'a Node> {
+    let mut out = HashMap::new();
+
+    let mut expl = VecDeque::new();
+    expl.push_front(root);
+    while let Some(e) = expl.pop_front() {
+        if e.nodetype == NodeType::Con && e.nodes.is_empty() && e.floating_nodes.is_empty() {
+            out.insert(e.id, e);
+            continue;
+        }
+
+        for c in &e.nodes {
+            expl.push_front(&c);
+        }
+        for c in &e.floating_nodes {
+            expl.push_front(&c);
+        }
+    }
+
+    out
+}
+
+fn get_focus_history() -> Result<Vec<i64>, Box<dyn Error>> {
+    let mut stream = UnixStream::connect(socket_filename())?;
+
+    // Just send a command to the server
+    let out = serde_json::to_vec(&Cmd::GetHistory)
+        .map(move |b| {
+                stream.write_all(b.as_slice()).unwrap();
+                let mut de = serde_json::Deserializer::from_reader(&stream);
+                Vec::deserialize(&mut de)
+            })??;
+    Ok(out)
+}
+
+fn html_escape(instr: &str) -> String {
+    instr.chars()
+        .map(|c| match c {
+            '&' => "&amp;".chars().collect(),
+            '<' => "&lt;".chars().collect(),
+            '>' => "&gt;".chars().collect(),
+            '"' => "&quot;".chars().collect(),
+            '\'' => "&#39;".chars().collect(),
+            _ => vec!(c),
+        }).flatten().collect()
+}
+
+fn window_format_line(node: &Node) -> String {
+    // TODO: add marks
+    // TODO: nicer format
+    format!("{}\n", html_escape(node.name.as_ref().unwrap_or(&" ".to_string())))
+}
+
+fn choose_with_menu(menu: &str, windows: &[&Node]) -> Option<usize> {
+    // TODO: better split
+    let cmd: Vec<&str> = menu.split(' ').collect();
+
+    let mut child = Command::new(cmd[0])
+        .args(cmd[1 .. ].iter())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("Failed to launch menu");
+    {
+        let stdin = child.stdin.as_mut().expect("stdin!");
+        for w in windows {
+            let line = window_format_line(&w);
+            stdin.write_all(line.as_bytes()).expect("");
+        }
+    }
+
+    let out = child.wait_with_output().expect("");
+    let s = from_utf8(out.stdout.as_slice()).unwrap();
+    let s : String = s.chars().filter(|x| match x {
+            ' ' | '\n' => false,
+            _ => true,
+    }).collect();
+
+    s.parse().ok()
+}
+
+fn focus_menu(menu: String) {
+    let mut conn = I3Connection::connect().unwrap();
+
+    let t = conn.get_tree().unwrap();
+    let ws = extract_windows(&t);
+
+    let mut hist = get_focus_history().unwrap_or_default();
+    let mut ordered_windows: Vec<&Node> = vec!();
+    let mut removed = HashSet::new();
+    if !hist.is_empty() {
+        hist.remove(0);
+    }
+    for i in hist {
+        if let Some(n) = ws.get(&i) {
+            ordered_windows.push(*n);
+            removed.insert(i);
+        }
+    }
+    for (i, w) in ws {
+        if !removed.contains(&i) {
+            ordered_windows.push(w);
+        }
+    }
+
+    if let Some(choice) = choose_with_menu(&menu, &ordered_windows) {
+        let wid = ordered_windows[choice].id;
+        conn.run_command(format!("[con_id={}] focus", wid).as_str()).unwrap();
+    }
+}
+
 #[derive(Debug, Options)]
-enum Command {
+enum ProgCommand {
     #[options(help = "switch")]
     Switch(SwitchOpts),
     #[options(help = "start server")]
     Server(ServerOpts),
+    #[options(help = "start menu")]
+    Menu(MenuOpts),
 }
 
 #[derive(Debug, Options)]
@@ -173,6 +289,12 @@ struct SwitchOpts {
 struct ServerOpts {}
 
 #[derive(Debug, Options)]
+struct MenuOpts {
+    #[options(help = "menu to run", default = "rofi -dmenu -matching fuzzy -markup-rows -i -p window -format i")]
+    menu: String,
+}
+
+#[derive(Debug, Options)]
 struct ProgOptions {
     #[options(help = "help")]
     help: bool,
@@ -181,7 +303,7 @@ struct ProgOptions {
     version: bool,
 
     #[options(command)]
-    command: Option<Command>,
+    command: Option<ProgCommand>,
 }
 
 
@@ -194,8 +316,9 @@ fn main() {
     }
 
     match opts.command {
-        Some(Command::Server(_)) => { focus_server(); }
-        Some(Command::Switch(o)) => { focus_client(o.count); }
+        Some(ProgCommand::Server(_)) => { focus_server(); }
+        Some(ProgCommand::Switch(o)) => { focus_client(o.count); }
+        Some(ProgCommand::Menu(m)) => { focus_menu(m.menu); }
         _ => { focus_client(1); }
     }
 }

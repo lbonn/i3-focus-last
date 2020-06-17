@@ -5,6 +5,7 @@ authors = ["lbonn"]
 description = "Focus last window on i3"
 license = "MIT"
 repository = "https://github.com/lbonn/i3-focus-last"
+edition = "2018"
 
 [dependencies]
 i3ipc = "0.10.0"
