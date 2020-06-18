@@ -169,6 +169,10 @@ fn extract_windows(root: &Node) -> HashMap<i64, &Node> {
             continue;
         }
 
+        if !e.marks.is_empty() {
+            out.insert(e.id, e);
+        }
+
         for c in &e.nodes {
             expl.push_front(&c);
         }
@@ -211,7 +215,7 @@ fn window_format_line(node: &Node) -> String {
         marks = format!(" [{}]", marks);
     }
 
-    let mut ctype = "<>".to_string();
+    let mut ctype = "Container".to_string();
     if let Some(aid) = &node.app_id {
         ctype = aid.to_string();
     } else if let Some(props) = &node.window_properties {
