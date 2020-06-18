@@ -23,7 +23,7 @@ use std::thread;
 
 use gumdrop::Options;
 use i3ipc::{I3Connection, I3EventListener, Subscription};
-use i3ipc::reply::{Node,NodeType};
+use i3ipc::reply::{Node,NodeType,WindowProperty};
 use i3ipc::event::Event;
 use i3ipc::event::inner::WindowChange;
 use serde::Deserialize;
@@ -206,9 +206,26 @@ fn html_escape(instr: &str) -> String {
 }
 
 fn window_format_line(node: &Node) -> String {
-    // TODO: add marks
-    // TODO: nicer format
-    format!("{}\n", html_escape(node.name.as_ref().unwrap_or(&" ".to_string())))
+    let mut marks = node.marks.join("][");
+    if !node.marks.is_empty() {
+        marks = format!(" [{}]", marks);
+    }
+
+    let mut ctype = "<>".to_string();
+    if let Some(aid) = &node.app_id {
+        ctype = aid.to_string();
+    } else if let Some(props) = &node.window_properties {
+        if let Some(c) = props.get(&WindowProperty::Class) {
+            ctype = c.to_string();
+        }
+    }
+
+    let mut name = "".to_string();
+    if let Some(n) = &node.name {
+        name = " - ".to_string() + n;
+    }
+
+    format!("{}{}<span weight=\"bold\">{}</span>\n", html_escape(&ctype), html_escape(&marks), html_escape(&name))
 }
 
 fn choose_with_menu(menu: &str, windows: &[&Node]) -> Option<usize> {
