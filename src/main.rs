@@ -29,6 +29,10 @@ use i3ipc::event::inner::WindowChange;
 use serde::Deserialize;
 
 static BUFFER_SIZE: usize = 100;
+static DEFAULT_ICONS: & [(&str, &str)] = &[
+    ("firefox", "firefox"),
+    ("Chromium", "chromium"),
+];
 
 fn socket_filename() -> String {
     env::var("HOME").unwrap() + "/.local/share/i3-focus-last.sock"
@@ -209,18 +213,24 @@ fn html_escape(instr: &str) -> String {
         }).flatten().collect()
 }
 
-fn window_format_line(node: &Node) -> String {
+fn window_format_line(node: &Node, icons_map: &HashMap<String, String>) -> String {
     let mut marks = node.marks.join("][");
     if !node.marks.is_empty() {
         marks = format!(" [{}]", marks);
     }
 
     let mut ctype = "Container".to_string();
+    let mut plus = "".to_string();
     if let Some(aid) = &node.app_id {
         ctype = aid.to_string();
     } else if let Some(props) = &node.window_properties {
         if let Some(c) = props.get(&WindowProperty::Class) {
             ctype = c.to_string();
+        }
+    }
+    if let Some(icon) = icons_map.get(&ctype) {
+        if !icon.is_empty() {
+            plus = format!("\0icon\x1f{}", icon);
         }
     }
 
@@ -229,10 +239,10 @@ fn window_format_line(node: &Node) -> String {
         name = " - ".to_string() + n;
     }
 
-    format!("{}{}<span weight=\"bold\">{}</span>\n", html_escape(&ctype), html_escape(&marks), html_escape(&name))
+    format!("{}{}<span weight=\"bold\">{}</span>{}\n", html_escape(&ctype), html_escape(&marks), html_escape(&name), plus)
 }
 
-fn choose_with_menu(menu: &str, windows: &[&Node]) -> Option<usize> {
+fn choose_with_menu(menu: &str, icons_map: &HashMap<String, String>, windows: &[&Node]) -> Option<usize> {
     // TODO: better split
     let cmd: Vec<&str> = menu.split(' ').collect();
 
@@ -245,7 +255,7 @@ fn choose_with_menu(menu: &str, windows: &[&Node]) -> Option<usize> {
     {
         let stdin = child.stdin.as_mut().expect("stdin!");
         for w in windows {
-            let line = window_format_line(&w);
+            let line = window_format_line(&w, icons_map);
             stdin.write_all(line.as_bytes()).expect("");
         }
     }
@@ -260,7 +270,35 @@ fn choose_with_menu(menu: &str, windows: &[&Node]) -> Option<usize> {
     s.parse().ok()
 }
 
-fn focus_menu(menu: String) {
+fn read_icons_map(icons_map: &str) -> HashMap<String, String> {
+    let mut m = HashMap::new();
+
+    for (c, i) in DEFAULT_ICONS {
+        m.insert((*c).to_string(), (*i).to_string());
+    }
+
+    let r = || -> Result<(), Box<dyn Error>> {
+        let icons_map = icons_map.replace("~", &env::var("HOME")?);
+
+        let f = fs::File::open(icons_map)?;
+        let mn : HashMap<String, String> = serde_json::from_reader(f)?;
+
+        for (k, v) in mn {
+            m.insert(k, v);
+        }
+        Ok(())
+    }();
+
+    if let Err(e) = r {
+        println!("Could not read icons map: {}", e);
+    }
+
+    m
+}
+
+fn focus_menu(menu_opts: MenuOpts) {
+    let icons_map = read_icons_map(&menu_opts.icons_map);
+
     let mut conn = I3Connection::connect().unwrap();
 
     let t = conn.get_tree().unwrap();
@@ -284,7 +322,7 @@ fn focus_menu(menu: String) {
         }
     }
 
-    if let Some(choice) = choose_with_menu(&menu, &ordered_windows) {
+    if let Some(choice) = choose_with_menu(&menu_opts.menu, &icons_map, &ordered_windows) {
         let wid = ordered_windows[choice].id;
         conn.run_command(format!("[con_id={}] focus", wid).as_str()).unwrap();
     }
@@ -311,8 +349,11 @@ struct ServerOpts {}
 
 #[derive(Debug, Options)]
 struct MenuOpts {
-    #[options(help = "menu to run", default = "rofi -dmenu -matching fuzzy -markup-rows -i -p window -format i")]
+    #[options(help = "menu to run", default = "rofi -show-icons -dmenu -matching fuzzy -markup-rows -i -p window -format i")]
     menu: String,
+
+    #[options(help = "path to icons map", default = "~/.config/i3-focus-last/icons.json")]
+    icons_map: String,
 }
 
 #[derive(Debug, Options)]
@@ -339,7 +380,7 @@ fn main() {
     match opts.command {
         Some(ProgCommand::Server(_)) => { focus_server(); }
         Some(ProgCommand::Switch(o)) => { focus_client(o.count); }
-        Some(ProgCommand::Menu(m)) => { focus_menu(m.menu); }
+        Some(ProgCommand::Menu(m)) => { focus_menu(m); }
         _ => { focus_client(1); }
     }
 }
