@@ -158,7 +158,7 @@ fn focus_client(nth_window: usize) {
         .ok();
 }
 
-fn extract_windows<'a>(root: &'a Node) -> HashMap<i64, &'a Node> {
+fn extract_windows(root: &Node) -> HashMap<i64, &Node> {
     let mut out = HashMap::new();
 
     let mut expl = VecDeque::new();
