@@ -2,7 +2,7 @@
 extern crate serde_derive;
 
 extern crate gumdrop;
-extern crate i3ipc;
+extern crate swayipc;
 extern crate serde_json;
 extern crate serde;
 
@@ -22,10 +22,9 @@ use std::str::from_utf8;
 use std::thread;
 
 use gumdrop::Options;
-use i3ipc::{I3Connection, I3EventListener, Subscription};
-use i3ipc::reply::{Node,NodeType,WindowProperty};
-use i3ipc::event::Event;
-use i3ipc::event::inner::WindowChange;
+use swayipc::{Connection, EventType};
+use swayipc::reply::{Node, NodeType, Event, WindowChange};
+
 use serde::Deserialize;
 
 static BUFFER_SIZE: usize = 100;
@@ -46,7 +45,7 @@ enum Cmd {
 }
 
 fn focus_nth(windows: &VecDeque<i64>, n: usize) -> Result<(), Box<dyn Error>> {
-    let mut conn = I3Connection::connect().unwrap();
+    let mut conn = Connection::new().unwrap();
     let mut k = n;
 
     // Start from the nth window and try to change focus until it succeeds
@@ -54,7 +53,7 @@ fn focus_nth(windows: &VecDeque<i64>, n: usize) -> Result<(), Box<dyn Error>> {
     while let Some(wid) = windows.get(k) {
         let r = conn.run_command(format!("[con_id={}] focus", wid).as_str())?;
 
-        if let Some(o) = r.outcomes.get(0) {
+        if let Some(o) = r.get(0) {
             if o.success {
                 return Ok(());
             }
@@ -107,7 +106,7 @@ fn cmd_server(windows: Arc<Mutex<VecDeque<i64>>>) {
 }
 
 fn get_focused_window() -> Result<i64, ()> {
-    let mut conn = I3Connection::connect().unwrap();
+    let mut conn = Connection::new().unwrap();
     let mut node = conn.get_tree().unwrap();
 
     while !node.focused {
@@ -119,7 +118,7 @@ fn get_focused_window() -> Result<i64, ()> {
 }
 
 fn focus_server() {
-    let mut listener = I3EventListener::connect().unwrap();
+    let conn = Connection::new().unwrap();
     let windows = Arc::new(Mutex::new(VecDeque::new()));
     let windowsc = Arc::clone(&windows);
 
@@ -133,12 +132,11 @@ fn focus_server() {
     thread::spawn(|| cmd_server(windowsc));
 
     // Listens to i3 event
-    let subs = [Subscription::Window];
-    listener.subscribe(&subs).unwrap();
+    let events = conn.subscribe(&[EventType::Window]).unwrap();
 
-    for event in listener.listen() {
+    for event in events {
         match event.unwrap() {
-            Event::WindowEvent(e) => {
+            Event::Window(e) => {
                 if let WindowChange::Focus = e.change {
                     let mut windows = windows.lock().unwrap();
 
@@ -168,7 +166,7 @@ fn extract_windows(root: &Node) -> HashMap<i64, &Node> {
     let mut expl = VecDeque::new();
     expl.push_front(root);
     while let Some(e) = expl.pop_front() {
-        if e.nodetype == NodeType::Con && e.nodes.is_empty() && e.floating_nodes.is_empty() {
+        if e.node_type == NodeType::Con && e.nodes.is_empty() && e.floating_nodes.is_empty() {
             out.insert(e.id, e);
             continue;
         }
@@ -224,7 +222,7 @@ fn window_format_line(node: &Node, icons_map: &HashMap<String, String>) -> Strin
     if let Some(aid) = &node.app_id {
         ctype = aid.to_string();
     } else if let Some(props) = &node.window_properties {
-        if let Some(c) = props.get(&WindowProperty::Class) {
+        if let Some(c) = &props.class {
             ctype = c.to_string();
         }
     }
@@ -299,7 +297,7 @@ fn read_icons_map(icons_map: &str) -> HashMap<String, String> {
 fn focus_menu(menu_opts: MenuOpts) {
     let icons_map = read_icons_map(&menu_opts.icons_map);
 
-    let mut conn = I3Connection::connect().unwrap();
+    let mut conn = Connection::new().unwrap();
 
     let t = conn.get_tree().unwrap();
     let ws = extract_windows(&t);
