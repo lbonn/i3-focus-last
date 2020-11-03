@@ -8,7 +8,7 @@ repository = "https://github.com/lbonn/i3-focus-last"
 edition = "2018"
 
 [dependencies]
-swayipc = "2.7.2"
+swayipc = { branch = "i3-compat", git = "https://github.com/lbonn/swayipc-rs"}
 gumdrop = "0.8.0"
 serde = "1.0"
 serde_derive = "1.0"

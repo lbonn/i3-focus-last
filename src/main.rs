@@ -23,7 +23,7 @@ use std::thread;
 
 use gumdrop::Options;
 use swayipc::{Connection, EventType};
-use swayipc::reply::{Node, NodeType, Event, WindowChange};
+use swayipc::{Node, NodeType, Event, WindowChange};
 
 use serde::Deserialize;
 
@@ -54,7 +54,7 @@ fn focus_nth(windows: &VecDeque<i64>, n: usize) -> Result<(), Box<dyn Error>> {
         let r = conn.run_command(format!("[con_id={}] focus", wid).as_str())?;
 
         if let Some(o) = r.get(0) {
-            if o.success {
+            if o.is_ok() {
                 return Ok(());
             }
         }
@@ -139,10 +139,11 @@ fn focus_server() {
             Event::Window(e) => {
                 if let WindowChange::Focus = e.change {
                     let mut windows = windows.lock().unwrap();
+                    let cid = e.container.id;
 
                     // dedupe, push front and truncate
-                    windows.retain(|v| *v != e.container.id);
-                    windows.push_front(e.container.id);
+                    windows.retain(|v| *v != cid);
+                    windows.push_front(cid);
                     windows.truncate(BUFFER_SIZE);
                 }
             }
