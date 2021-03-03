@@ -135,9 +135,9 @@ fn focus_server() {
     let events = conn.subscribe(&[EventType::Window]).unwrap();
 
     for event in events {
-        match event.unwrap() {
-            Event::Window(e) => {
-                if let WindowChange::Focus = e.change {
+        if let Event::Window(e) = event.unwrap() {
+            match e.change {
+                WindowChange::Focus => {
                     let mut windows = windows.lock().unwrap();
                     let cid = e.container.id;
 
@@ -145,9 +145,16 @@ fn focus_server() {
                     windows.retain(|v| *v != cid);
                     windows.push_front(cid);
                     windows.truncate(BUFFER_SIZE);
-                }
+                },
+                WindowChange::Close => {
+                    let mut windows = windows.lock().unwrap();
+                    let cid = e.container.id;
+
+                    // remove
+                    windows.retain(|v| *v != cid);
+                },
+                _ => {}
             }
-            _ => unreachable!(),
         }
     }
 }
