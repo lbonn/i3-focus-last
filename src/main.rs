@@ -117,10 +117,11 @@ fn get_focused_window() -> Result<i64, ()> {
     Ok(node.id)
 }
 
-fn focus_server() {
+fn focus_server(server_opts: ServerOpts) {
     let conn = Connection::new().unwrap();
     let windows = Arc::new(Mutex::new(VecDeque::new()));
     let windowsc = Arc::clone(&windows);
+    let mut scratchpad_ids: HashSet<i64> = HashSet::new();
 
     // Add the current focused window to bootstrap the list
     get_focused_window().map(|wid| {
@@ -137,13 +138,22 @@ fn focus_server() {
     for event in events {
         if let Event::Window(e) = event.unwrap() {
             match e.change {
+                WindowChange::Move => {
+                    if e.container.nodes.len() > 0 {
+                        scratchpad_ids.insert(e.container.nodes[0].id);
+                    }
+                },
                 WindowChange::Focus => {
                     let mut windows = windows.lock().unwrap();
                     let cid = e.container.id;
 
                     // dedupe, push front and truncate
                     windows.retain(|v| *v != cid);
-                    windows.push_front(cid);
+
+                    if !server_opts.ignore_scratchpad || !scratchpad_ids.contains(&e.container.id) {
+                        windows.push_front(cid);
+                    }
+
                     windows.truncate(BUFFER_SIZE);
                 },
                 WindowChange::Close => {
@@ -351,7 +361,10 @@ struct SwitchOpts {
 }
 
 #[derive(Debug, Options)]
-struct ServerOpts {}
+struct ServerOpts {
+    #[options(help = "Don't count scratchpad", long = "ignore-scratchpad")]
+    ignore_scratchpad: bool,
+}
 
 #[derive(Debug, Options)]
 struct MenuOpts {
@@ -384,7 +397,7 @@ fn main() {
     }
 
     match opts.command {
-        Some(ProgCommand::Server(_)) => { focus_server(); }
+        Some(ProgCommand::Server(s)) => { focus_server(s); }
         Some(ProgCommand::Switch(o)) => { focus_client(o.count); }
         Some(ProgCommand::Menu(m)) => { focus_menu(m); }
         _ => { focus_client(1); }

@@ -20,7 +20,7 @@ Usage
 Add this line to your i3 or Sway configuration:
 
 ```
-exec_always i3-focus-last server
+exec_always i3-focus-last server <--ignore-scratchpad>
 ```
 
 Then, add a binding to execute `i3-focus-last`:
