@@ -20,14 +20,19 @@ Usage
 Add this line to your i3 or Sway configuration:
 
 ```
-exec_always i3-focus-last server <--ignore-scratchpad>
+exec_always i3-focus-last server
 ```
 
 Then, add a binding to execute `i3-focus-last`:
 
 ```
-bindsym $mod+Tab exec i3-focus-last
+bindsym $mod+Tab exec i3-focus-last <--ignore-scratchpad> <--hide-scratchpad>
 ```
+
+Options
+--------
+- `--ignore-scratchpad` - Don't focus to/from scratchpad
+- `--hide-scratchpad` - If scratchpad is focused, hide it and focus previous window
 
 Menu mode
 ---------

@@ -40,7 +40,7 @@ fn socket_filename() -> String {
 /// Commands sent for client-server interfacing
 #[derive(Serialize, Deserialize, Debug)]
 enum Cmd {
-    SwitchTo(usize, bool),
+    SwitchTo(SwitchOpts),
     GetHistory,
 }
 
@@ -50,12 +50,11 @@ pub struct WinData {
     scratch: bool,
 }
 
-fn focus_nth(windows: &VecDeque<WinData>, n: usize, ignore_scratchpad: bool) -> Result<(), Box<dyn Error>> {
+fn focus_nth(windows: &VecDeque<WinData>, opts: SwitchOpts) -> Result<(), Box<dyn Error>> {
     let mut conn = Connection::new().unwrap();
-    let mut k = n;
+    let mut k = opts.count;
 
-    let scratchpad_focused = get_focused_window().is_err();
-    if ignore_scratchpad && scratchpad_focused {
+    if opts.hide_scratchpad && get_focused_window().is_err() {
         conn.run_command(format!("scratchpad show").as_str())?;
     }
 
@@ -63,7 +62,7 @@ fn focus_nth(windows: &VecDeque<WinData>, n: usize, ignore_scratchpad: bool) -> 
     // (so that it skips windows which no longer exist)
     while let Some(win_data) = windows.get(k) {
 
-        if ignore_scratchpad && win_data.scratch {
+        if opts.ignore_scratchpad && win_data.scratch {
             k += 1;
             continue;
         }
@@ -79,7 +78,7 @@ fn focus_nth(windows: &VecDeque<WinData>, n: usize, ignore_scratchpad: bool) -> 
         k += 1;
     }
 
-    Err(From::from(format!("Last {}nth window unavailable", n)))
+    Err(From::from(format!("Last {}nth window unavailable", opts.count)))
 }
 
 fn cmd_server(windows: Arc<Mutex<VecDeque<WinData>>>) {
@@ -102,11 +101,11 @@ fn cmd_server(windows: Arc<Mutex<VecDeque<WinData>>>) {
                 let cmd = Cmd::deserialize(&mut de);
 
                 match cmd {
-                    Ok(Cmd::SwitchTo(n, ignore_scratchpad)) => {
+                    Ok(Cmd::SwitchTo(opts)) => {
                         let winc = winc.lock().unwrap();
 
                         // This can fail, that's fine
-                        focus_nth(&winc, n, ignore_scratchpad).ok();
+                        focus_nth(&winc, opts).ok();
                     }
                     Ok(Cmd::GetHistory) => {
                         let winc = winc.lock().unwrap();
@@ -196,7 +195,7 @@ fn focus_client(opts: SwitchOpts) {
     let mut stream = UnixStream::connect(socket_filename()).unwrap();
 
     // Just send a command to the server
-    serde_json::to_vec(&Cmd::SwitchTo(opts.count, opts.ignore_scratchpad))
+    serde_json::to_vec(&Cmd::SwitchTo(opts))
         .map(move |b| stream.write_all(b.as_slice()))
         .ok();
 }
@@ -377,12 +376,14 @@ enum ProgCommand {
     Menu(MenuOpts),
 }
 
-#[derive(Debug, Options)]
+#[derive(Debug, Options, Serialize, Deserialize)]
 struct SwitchOpts {
     #[options(help = "nth window to focus", no_long, short = "n", default = "1")]
     count: usize,
     #[options(help = "Don't count scratchpad", long = "ignore-scratchpad")]
     ignore_scratchpad: bool,
+    #[options(help = "If scratchpad focused, hide it", long = "hide-scratchpad")]
+    hide_scratchpad: bool,
 }
 
 #[derive(Debug, Options)]
@@ -425,7 +426,9 @@ fn main() {
         _ => {
             let opts = SwitchOpts {
                 count: 1,
+                // remain compatible with previous behavior
                 ignore_scratchpad: false,
+                hide_scratchpad: false,
             };
             focus_client(opts);
         }
