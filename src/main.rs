@@ -76,32 +76,30 @@ fn cmd_server(windows: Arc<Mutex<VecDeque<i64>>>) {
     // Listen to client commands
     let listener = UnixListener::bind(socket).unwrap();
 
-    for stream in listener.incoming() {
-        if let Ok(stream) = stream {
-            let winc = Arc::clone(&windows);
+    for stream in listener.incoming().flatten() {
+        let winc = Arc::clone(&windows);
 
-            thread::spawn(move || {
-                let mut de = serde_json::Deserializer::from_reader(&stream);
-                let cmd = Cmd::deserialize(&mut de);
+        thread::spawn(move || {
+            let mut de = serde_json::Deserializer::from_reader(&stream);
+            let cmd = Cmd::deserialize(&mut de);
 
-                match cmd {
-                    Ok(Cmd::SwitchTo(n)) => {
-                        let winc = winc.lock().unwrap();
+            match cmd {
+                Ok(Cmd::SwitchTo(n)) => {
+                    let winc = winc.lock().unwrap();
 
-                        // This can fail, that's fine
-                        focus_nth(&winc, n).ok();
-                    }
-                    Ok(Cmd::GetHistory) => {
-                        let winc = winc.lock().unwrap();
-                        let _ = serde_json::to_writer(&stream, &*winc);
-                    }
-                    _ => {
-                        let _ = serde_json::to_writer(&stream, "invalid command");
-                    }
+                    // This can fail, that's fine
+                    focus_nth(&winc, n).ok();
                 }
-                let _ = stream.shutdown(Shutdown::Both);
-            });
-        }
+                Ok(Cmd::GetHistory) => {
+                    let winc = winc.lock().unwrap();
+                    let _ = serde_json::to_writer(&stream, &*winc);
+                }
+                _ => {
+                    let _ = serde_json::to_writer(&stream, "invalid command");
+                }
+            }
+            let _ = stream.shutdown(Shutdown::Both);
+        });
     }
 }
 
@@ -184,10 +182,10 @@ fn extract_windows(root: &Node) -> HashMap<i64, &Node> {
         }
 
         for c in &e.nodes {
-            expl.push_front(&c);
+            expl.push_front(c);
         }
         for c in &e.floating_nodes {
-            expl.push_front(&c);
+            expl.push_front(c);
         }
     }
 
@@ -261,17 +259,14 @@ fn choose_with_menu(menu: &str, icons_map: &HashMap<String, String>, windows: &[
     {
         let stdin = child.stdin.as_mut().expect("stdin!");
         for w in windows {
-            let line = window_format_line(&w, icons_map);
+            let line = window_format_line(w, icons_map);
             stdin.write_all(line.as_bytes()).expect("");
         }
     }
 
     let out = child.wait_with_output().expect("");
     let s = from_utf8(out.stdout.as_slice()).unwrap();
-    let s : String = s.chars().filter(|x| match x {
-            ' ' | '\n' => false,
-            _ => true,
-    }).collect();
+    let s : String = s.chars().filter(|x| !matches!(x, ' ' | '\n')).collect();
 
     s.parse().ok()
 }
