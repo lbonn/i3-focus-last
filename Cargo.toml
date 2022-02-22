@@ -5,10 +5,10 @@ authors = ["lbonn"]
 description = "Focus last window on i3"
 license = "MIT"
 repository = "https://github.com/lbonn/i3-focus-last"
-edition = "2018"
+edition = "2021"
 
 [dependencies]
-swayipc = "3.0.0-alpha.1"
+swayipc = "3.0.0"
 gumdrop = "0.8.0"
 serde = "1.0"
 serde_derive = "1.0"
