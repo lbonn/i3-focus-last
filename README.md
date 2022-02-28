@@ -26,7 +26,7 @@ exec_always i3-focus-last server
 Then, add a binding to execute `i3-focus-last`:
 
 ```
-bindsym $mod+Tab exec i3-focus-last <--ignore-scratchpad> <--hide-scratchpad>
+bindsym $mod+Tab exec i3-focus-last switch <--ignore-scratchpad> <--hide-scratchpad>
 ```
 
 Options

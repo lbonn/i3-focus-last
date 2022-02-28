@@ -133,11 +133,32 @@ fn get_focused_window() -> Result<Node, ()> {
     Ok(node)
 }
 
-fn focus_server(server_opts: ServerOpts) {
+// moves `id` to the front of `windows`, recording if in scratchpad
+fn move_to_recent_history(
+    windows: &Arc<Mutex<VecDeque<WinData>>>,
+    cid: i64,
+    scratchpad_ids: &Vec<i64>
+) {
+
+    let mut windows = windows.lock().unwrap();
+
+    // dedupe, push front and truncate
+    windows.retain(|v| v.id != cid);
+
+    let win_data = WinData {
+        id: cid,
+        scratch: scratchpad_ids.contains(&cid),
+    };
+    windows.push_front(win_data);
+
+    windows.truncate(BUFFER_SIZE);
+}
+
+fn focus_server(_server_opts: ServerOpts) {
     let conn = Connection::new().unwrap();
     let windows = Arc::new(Mutex::new(VecDeque::new()));
     let windowsc = Arc::clone(&windows);
-    let mut scratchpad_ids: HashSet<i64> = HashSet::new();
+    let mut scratchpad_ids: Vec<i64> = vec![];
 
     // Add the current focused window to bootstrap the list
     get_focused_window().map(|node| {
@@ -158,25 +179,13 @@ fn focus_server(server_opts: ServerOpts) {
     for event in events {
         if let Event::Window(e) = event.unwrap() {
             match e.change {
-                WindowChange::Move => {
-                    if e.container.nodes.len() > 0 {
-                        scratchpad_ids.insert(e.container.nodes[0].id);
-                    }
+
+                WindowChange::Floating => {
+                    scratchpad_ids = get_scratchpad_ids();
+                    move_to_recent_history(&windows, e.container.id, &scratchpad_ids);
                 },
                 WindowChange::Focus => {
-                    let mut windows = windows.lock().unwrap();
-                    let cid = e.container.id;
-
-                    // dedupe, push front and truncate
-                    windows.retain(|v| v.id != cid);
-
-                    let win_data = WinData {
-                        id: cid,
-                        scratch: scratchpad_ids.contains(&cid),
-                    };
-                    windows.push_front(win_data);
-
-                    windows.truncate(BUFFER_SIZE);
+                    move_to_recent_history(&windows, e.container.id, &scratchpad_ids);
                 },
                 WindowChange::Close => {
                     let mut windows = windows.lock().unwrap();
@@ -198,6 +207,31 @@ fn focus_client(opts: SwitchOpts) {
     serde_json::to_vec(&Cmd::SwitchTo(opts))
         .map(move |b| stream.write_all(b.as_slice()))
         .ok();
+}
+
+
+fn get_scratchpad_ids() -> Vec<i64> {
+
+    let mut conn = Connection::new().unwrap();
+    let root = conn.get_tree().unwrap();
+
+    let mut scratches = vec![];
+
+    let scratch_node = root.find_as_ref(|node: &Node| {
+        let str = String::from("__i3_scratch");
+        return node.name == Some(str)
+    });
+
+    match scratch_node {
+        Some(scratch_node) => {
+
+            for scratch in &scratch_node.floating_nodes {
+                scratches.push(scratch.focus[0])
+            }
+            return scratches;
+        },
+        None => return scratches
+    };
 }
 
 fn extract_windows(root: &Node) -> HashMap<i64, &Node> {
