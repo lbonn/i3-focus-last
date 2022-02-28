@@ -414,7 +414,7 @@ enum ProgCommand {
 struct SwitchOpts {
     #[options(help = "nth window to focus", no_long, short = "n", default = "1")]
     count: usize,
-    #[options(help = "Don't count scratchpad", long = "ignore-scratchpad")]
+    #[options(help = "Don't count scratchpad", long = "ignore-scratchpad", default = "true")]
     ignore_scratchpad: bool,
     #[options(help = "If scratchpad focused, hide it", long = "hide-scratchpad")]
     hide_scratchpad: bool,
@@ -460,8 +460,7 @@ fn main() {
         _ => {
             let opts = SwitchOpts {
                 count: 1,
-                // remain compatible with previous behavior
-                ignore_scratchpad: false,
+                ignore_scratchpad: true,
                 hide_scratchpad: false,
             };
             focus_client(opts);
