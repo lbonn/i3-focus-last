@@ -12,6 +12,7 @@ use std::collections::VecDeque;
 use std::env;
 use std::error::Error;
 use std::fs;
+use std::io;
 use std::io::Write;
 use std::net::Shutdown;
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -30,8 +31,8 @@ use serde::Deserialize;
 static BUFFER_SIZE: usize = 100;
 static DEFAULT_ICONS: &[(&str, &str)] = &[("firefox", "firefox"), ("Chromium", "chromium")];
 
-fn socket_filename() -> String {
-    env::var("HOME").unwrap() + "/.local/share/i3-focus-last.sock"
+fn socket_filename() -> Result<String, Box<env::VarError>> {
+    Ok(env::var("HOME")? + "/.local/share/i3-focus-last.sock")
 }
 
 /// Commands sent for client-server interfacing
@@ -42,7 +43,7 @@ enum Cmd {
 }
 
 fn focus_nth(windows: &VecDeque<i64>, n: usize) -> Result<(), Box<dyn Error>> {
-    let mut conn = Connection::new().unwrap();
+    let mut conn = Connection::new()?;
     let mut k = n;
 
     // Start from the nth window and try to change focus until it succeeds
@@ -62,16 +63,16 @@ fn focus_nth(windows: &VecDeque<i64>, n: usize) -> Result<(), Box<dyn Error>> {
     Err(From::from(format!("Last {}nth window unavailable", n)))
 }
 
-fn cmd_server(windows: Arc<Mutex<VecDeque<i64>>>) {
-    let socket = socket_filename();
+fn cmd_server(windows: Arc<Mutex<VecDeque<i64>>>) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let socket = socket_filename()?;
     let socket = Path::new(&socket);
 
     if socket.exists() {
-        fs::remove_file(&socket).unwrap();
+        fs::remove_file(&socket)?;
     }
 
     // Listen to client commands
-    let listener = UnixListener::bind(socket).unwrap();
+    let listener = UnixListener::bind(socket)?;
 
     for stream in listener.incoming().flatten() {
         let winc = Arc::clone(&windows);
@@ -98,27 +99,30 @@ fn cmd_server(windows: Arc<Mutex<VecDeque<i64>>>) {
             let _ = stream.shutdown(Shutdown::Both);
         });
     }
+
+    Ok(())
 }
 
-fn get_focused_window() -> Result<i64, ()> {
-    let mut conn = Connection::new().unwrap();
-    let mut node = conn.get_tree().unwrap();
+fn get_focused_window() -> Result<Result<i64, ()>, Box<dyn Error + Send + Sync>> {
+    let mut conn = Connection::new()?;
+    let mut node = conn.get_tree()?;
 
-    while !node.focused {
-        let fid = node.focus.into_iter().next().ok_or(())?;
-        node = node.nodes.into_iter().find(|n| n.id == fid).ok_or(())?;
-    }
-
-    Ok(node.id)
+    Ok(|| -> Result<_, ()> {
+        while !node.focused {
+            let fid = node.focus.into_iter().next().ok_or(())?;
+            node = node.nodes.into_iter().find(|n| n.id == fid).ok_or(())?;
+        }
+        Ok(node.id)
+    }())
 }
 
-fn focus_server() {
-    let conn = Connection::new().unwrap();
+fn focus_server() -> Result<(), Box<dyn Error + Send + Sync>> {
+    let conn = Connection::new()?;
     let windows = Arc::new(Mutex::new(VecDeque::new()));
     let windowsc = Arc::clone(&windows);
 
     // Add the current focused window to bootstrap the list
-    get_focused_window()
+    get_focused_window()?
         .map(|wid| {
             let mut windows = windows.lock().unwrap();
 
@@ -126,12 +130,16 @@ fn focus_server() {
         })
         .ok();
 
-    thread::spawn(|| cmd_server(windowsc));
-
     // Listens to i3 event
-    let events = conn.subscribe(&[EventType::Window]).unwrap();
+    let events = conn.subscribe(&[EventType::Window])?;
+
+    let server_handle = thread::spawn(|| cmd_server(windowsc));
 
     for event in events {
+        if let Err(_e) = event {
+            break;
+        }
+
         if let Event::Window(e) = event.unwrap() {
             match e.change {
                 WindowChange::Focus => {
@@ -154,15 +162,21 @@ fn focus_server() {
             }
         }
     }
+
+    server_handle.join().unwrap()?;
+
+    Ok(())
 }
 
-fn focus_client(nth_window: usize) {
-    let mut stream = UnixStream::connect(socket_filename()).unwrap();
+fn focus_client(nth_window: usize) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let mut stream = UnixStream::connect(socket_filename()?)?;
 
     // Just send a command to the server
     serde_json::to_vec(&Cmd::SwitchTo(nth_window))
         .map(move |b| stream.write_all(b.as_slice()))
         .ok();
+
+    Ok(())
 }
 
 fn extract_windows(root: &Node) -> HashMap<i64, &Node> {
@@ -192,21 +206,23 @@ fn extract_windows(root: &Node) -> HashMap<i64, &Node> {
 }
 
 fn get_focus_history() -> Result<Vec<i64>, Box<dyn Error>> {
-    let mut stream = UnixStream::connect(socket_filename())?;
+    let mut stream = UnixStream::connect(socket_filename()?)?;
 
     // Just send a command to the server
-    let out = serde_json::to_vec(&Cmd::GetHistory).map(move |b| {
-        stream.write_all(b.as_slice()).unwrap();
-        let mut de = serde_json::Deserializer::from_reader(&stream);
-        Vec::deserialize(&mut de)
-    })??;
+    let out =
+        serde_json::to_vec(&Cmd::GetHistory).map(move |b| -> Result<_, Box<dyn Error>> {
+            stream.write_all(b.as_slice())?;
+            let mut de = serde_json::Deserializer::from_reader(&stream);
+            let o = Vec::deserialize(&mut de)?;
+            Ok(o)
+        })??;
     Ok(out)
 }
 
 fn html_escape(instr: &str) -> String {
     instr
         .chars()
-        .map(|c| match c {
+        .flat_map(|c| match c {
             '&' => "&amp;".chars().collect(),
             '<' => "&lt;".chars().collect(),
             '>' => "&gt;".chars().collect(),
@@ -214,7 +230,6 @@ fn html_escape(instr: &str) -> String {
             '\'' => "&#39;".chars().collect(),
             _ => vec![c],
         })
-        .flatten()
         .collect()
 }
 
@@ -257,7 +272,7 @@ fn choose_with_menu(
     menu: &str,
     icons_map: &HashMap<String, String>,
     windows: &[&Node],
-) -> Option<usize> {
+) -> Result<usize, Box<dyn Error + Send + Sync>> {
     // TODO: better split
     let cmd: Vec<&str> = menu.split(' ').collect();
 
@@ -265,21 +280,24 @@ fn choose_with_menu(
         .args(cmd[1..].iter())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .spawn()
-        .expect("Failed to launch menu");
+        .spawn()?;
+
     {
-        let stdin = child.stdin.as_mut().expect("stdin!");
+        let stdin = child
+            .stdin
+            .as_mut()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "no stdin"))?;
         for w in windows {
             let line = window_format_line(w, icons_map);
-            stdin.write_all(line.as_bytes()).expect("");
+            stdin.write_all(line.as_bytes())?;
         }
     }
 
-    let out = child.wait_with_output().expect("");
-    let s = from_utf8(out.stdout.as_slice()).unwrap();
+    let out = child.wait_with_output()?;
+    let s = from_utf8(out.stdout.as_slice())?;
     let s: String = s.chars().filter(|x| !matches!(x, ' ' | '\n')).collect();
 
-    s.parse().ok()
+    Ok(s.parse()?)
 }
 
 fn read_icons_map(icons_map: &str) -> HashMap<String, String> {
@@ -290,7 +308,7 @@ fn read_icons_map(icons_map: &str) -> HashMap<String, String> {
     }
 
     let r = || -> Result<(), Box<dyn Error>> {
-        let icons_map = icons_map.replace("~", &env::var("HOME")?);
+        let icons_map = icons_map.replace('~', &env::var("HOME")?);
 
         let f = fs::File::open(icons_map)?;
         let mn: HashMap<String, String> = serde_json::from_reader(f)?;
@@ -308,12 +326,12 @@ fn read_icons_map(icons_map: &str) -> HashMap<String, String> {
     m
 }
 
-fn focus_menu(menu_opts: MenuOpts) {
+fn focus_menu(menu_opts: MenuOpts) -> Result<(), Box<dyn Error + Send + Sync>> {
     let icons_map = read_icons_map(&menu_opts.icons_map);
 
-    let mut conn = Connection::new().unwrap();
+    let mut conn = Connection::new()?;
 
-    let t = conn.get_tree().unwrap();
+    let t = conn.get_tree()?;
     let ws = extract_windows(&t);
 
     let mut hist = get_focus_history().unwrap_or_default();
@@ -334,11 +352,11 @@ fn focus_menu(menu_opts: MenuOpts) {
         }
     }
 
-    if let Some(choice) = choose_with_menu(&menu_opts.menu, &icons_map, &ordered_windows) {
-        let wid = ordered_windows[choice].id;
-        conn.run_command(format!("[con_id={}] focus", wid).as_str())
-            .unwrap();
-    }
+    let choice = choose_with_menu(&menu_opts.menu, &icons_map, &ordered_windows)?;
+    let wid = ordered_windows[choice].id;
+    conn.run_command(format!("[con_id={}] focus", wid).as_str())?;
+
+    Ok(())
 }
 
 #[derive(Debug, Options)]
@@ -387,26 +405,24 @@ struct ProgOptions {
     command: Option<ProgCommand>,
 }
 
-fn main() {
+fn main() -> Result<(), String> {
     let opts = ProgOptions::parse_args_default_or_exit();
 
     if opts.version {
         println!("i3-focus-last {}", env!("CARGO_PKG_VERSION"));
-        return;
+        return Ok(());
     }
 
-    match opts.command {
-        Some(ProgCommand::Server(_)) => {
-            focus_server();
-        }
-        Some(ProgCommand::Switch(o)) => {
-            focus_client(o.count);
-        }
-        Some(ProgCommand::Menu(m)) => {
-            focus_menu(m);
-        }
-        _ => {
-            focus_client(1);
-        }
+    let r = match opts.command {
+        Some(ProgCommand::Server(_)) => focus_server(),
+        Some(ProgCommand::Switch(o)) => focus_client(o.count),
+        Some(ProgCommand::Menu(m)) => focus_menu(m),
+        _ => focus_client(1),
+    };
+
+    if let Err(ref e) = r {
+        return Err(format!("{}", e));
     }
+
+    Ok(())
 }
