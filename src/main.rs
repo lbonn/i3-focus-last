@@ -2,36 +2,33 @@
 extern crate serde_derive;
 
 extern crate gumdrop;
-extern crate swayipc;
-extern crate serde_json;
 extern crate serde;
+extern crate serde_json;
+extern crate swayipc;
 
-use std::env;
-use std::error::Error;
-use std::collections::VecDeque;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::collections::VecDeque;
+use std::env;
+use std::error::Error;
 use std::fs;
-use std::net::Shutdown;
-use std::path::Path;
 use std::io::Write;
+use std::net::Shutdown;
 use std::os::unix::net::{UnixListener, UnixStream};
+use std::path::Path;
 use std::process::{Command, Stdio};
-use std::sync::{Arc, Mutex};
 use std::str::from_utf8;
+use std::sync::{Arc, Mutex};
 use std::thread;
 
 use gumdrop::Options;
 use swayipc::{Connection, EventType};
-use swayipc::{Node, NodeType, Event, WindowChange};
+use swayipc::{Event, Node, NodeType, WindowChange};
 
 use serde::Deserialize;
 
 static BUFFER_SIZE: usize = 100;
-static DEFAULT_ICONS: & [(&str, &str)] = &[
-    ("firefox", "firefox"),
-    ("Chromium", "chromium"),
-];
+static DEFAULT_ICONS: &[(&str, &str)] = &[("firefox", "firefox"), ("Chromium", "chromium")];
 
 fn socket_filename() -> String {
     env::var("HOME").unwrap() + "/.local/share/i3-focus-last.sock"
@@ -121,11 +118,13 @@ fn focus_server() {
     let windowsc = Arc::clone(&windows);
 
     // Add the current focused window to bootstrap the list
-    get_focused_window().map(|wid| {
-        let mut windows = windows.lock().unwrap();
+    get_focused_window()
+        .map(|wid| {
+            let mut windows = windows.lock().unwrap();
 
-        windows.push_front(wid);
-    }).ok();
+            windows.push_front(wid);
+        })
+        .ok();
 
     thread::spawn(|| cmd_server(windowsc));
 
@@ -143,14 +142,14 @@ fn focus_server() {
                     windows.retain(|v| *v != cid);
                     windows.push_front(cid);
                     windows.truncate(BUFFER_SIZE);
-                },
+                }
                 WindowChange::Close => {
                     let mut windows = windows.lock().unwrap();
                     let cid = e.container.id;
 
                     // remove
                     windows.retain(|v| *v != cid);
-                },
+                }
                 _ => {}
             }
         }
@@ -196,25 +195,27 @@ fn get_focus_history() -> Result<Vec<i64>, Box<dyn Error>> {
     let mut stream = UnixStream::connect(socket_filename())?;
 
     // Just send a command to the server
-    let out = serde_json::to_vec(&Cmd::GetHistory)
-        .map(move |b| {
-                stream.write_all(b.as_slice()).unwrap();
-                let mut de = serde_json::Deserializer::from_reader(&stream);
-                Vec::deserialize(&mut de)
-            })??;
+    let out = serde_json::to_vec(&Cmd::GetHistory).map(move |b| {
+        stream.write_all(b.as_slice()).unwrap();
+        let mut de = serde_json::Deserializer::from_reader(&stream);
+        Vec::deserialize(&mut de)
+    })??;
     Ok(out)
 }
 
 fn html_escape(instr: &str) -> String {
-    instr.chars()
+    instr
+        .chars()
         .map(|c| match c {
             '&' => "&amp;".chars().collect(),
             '<' => "&lt;".chars().collect(),
             '>' => "&gt;".chars().collect(),
             '"' => "&quot;".chars().collect(),
             '\'' => "&#39;".chars().collect(),
-            _ => vec!(c),
-        }).flatten().collect()
+            _ => vec![c],
+        })
+        .flatten()
+        .collect()
 }
 
 fn window_format_line(node: &Node, icons_map: &HashMap<String, String>) -> String {
@@ -243,15 +244,25 @@ fn window_format_line(node: &Node, icons_map: &HashMap<String, String>) -> Strin
         name = " - ".to_string() + n;
     }
 
-    format!("{}{}<span weight=\"bold\">{}</span>{}\n", html_escape(&ctype), html_escape(&marks), html_escape(&name), plus)
+    format!(
+        "{}{}<span weight=\"bold\">{}</span>{}\n",
+        html_escape(&ctype),
+        html_escape(&marks),
+        html_escape(&name),
+        plus
+    )
 }
 
-fn choose_with_menu(menu: &str, icons_map: &HashMap<String, String>, windows: &[&Node]) -> Option<usize> {
+fn choose_with_menu(
+    menu: &str,
+    icons_map: &HashMap<String, String>,
+    windows: &[&Node],
+) -> Option<usize> {
     // TODO: better split
     let cmd: Vec<&str> = menu.split(' ').collect();
 
     let mut child = Command::new(cmd[0])
-        .args(cmd[1 .. ].iter())
+        .args(cmd[1..].iter())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
@@ -266,7 +277,7 @@ fn choose_with_menu(menu: &str, icons_map: &HashMap<String, String>, windows: &[
 
     let out = child.wait_with_output().expect("");
     let s = from_utf8(out.stdout.as_slice()).unwrap();
-    let s : String = s.chars().filter(|x| !matches!(x, ' ' | '\n')).collect();
+    let s: String = s.chars().filter(|x| !matches!(x, ' ' | '\n')).collect();
 
     s.parse().ok()
 }
@@ -282,7 +293,7 @@ fn read_icons_map(icons_map: &str) -> HashMap<String, String> {
         let icons_map = icons_map.replace("~", &env::var("HOME")?);
 
         let f = fs::File::open(icons_map)?;
-        let mn : HashMap<String, String> = serde_json::from_reader(f)?;
+        let mn: HashMap<String, String> = serde_json::from_reader(f)?;
 
         for (k, v) in mn {
             m.insert(k, v);
@@ -306,7 +317,7 @@ fn focus_menu(menu_opts: MenuOpts) {
     let ws = extract_windows(&t);
 
     let mut hist = get_focus_history().unwrap_or_default();
-    let mut ordered_windows: Vec<&Node> = vec!();
+    let mut ordered_windows: Vec<&Node> = vec![];
     let mut removed = HashSet::new();
     if !hist.is_empty() {
         hist.remove(0);
@@ -325,7 +336,8 @@ fn focus_menu(menu_opts: MenuOpts) {
 
     if let Some(choice) = choose_with_menu(&menu_opts.menu, &icons_map, &ordered_windows) {
         let wid = ordered_windows[choice].id;
-        conn.run_command(format!("[con_id={}] focus", wid).as_str()).unwrap();
+        conn.run_command(format!("[con_id={}] focus", wid).as_str())
+            .unwrap();
     }
 }
 
@@ -350,10 +362,16 @@ struct ServerOpts {}
 
 #[derive(Debug, Options)]
 struct MenuOpts {
-    #[options(help = "menu to run", default = "rofi -show-icons -dmenu -matching fuzzy -markup-rows -i -p window -format i")]
+    #[options(
+        help = "menu to run",
+        default = "rofi -show-icons -dmenu -matching fuzzy -markup-rows -i -p window -format i"
+    )]
     menu: String,
 
-    #[options(help = "path to icons map", default = "~/.config/i3-focus-last/icons.json")]
+    #[options(
+        help = "path to icons map",
+        default = "~/.config/i3-focus-last/icons.json"
+    )]
     icons_map: String,
 }
 
@@ -369,7 +387,6 @@ struct ProgOptions {
     command: Option<ProgCommand>,
 }
 
-
 fn main() {
     let opts = ProgOptions::parse_args_default_or_exit();
 
@@ -379,9 +396,17 @@ fn main() {
     }
 
     match opts.command {
-        Some(ProgCommand::Server(_)) => { focus_server(); }
-        Some(ProgCommand::Switch(o)) => { focus_client(o.count); }
-        Some(ProgCommand::Menu(m)) => { focus_menu(m); }
-        _ => { focus_client(1); }
+        Some(ProgCommand::Server(_)) => {
+            focus_server();
+        }
+        Some(ProgCommand::Switch(o)) => {
+            focus_client(o.count);
+        }
+        Some(ProgCommand::Menu(m)) => {
+            focus_menu(m);
+        }
+        _ => {
+            focus_client(1);
+        }
     }
 }
