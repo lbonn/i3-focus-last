@@ -1,15 +1,9 @@
-[package]
-name = "i3-focus-last"
-version = "0.5.4"
-authors = ["lbonn"]
-description = "Focus last window on i3"
-license = "MIT"
-repository = "https://github.com/lbonn/i3-focus-last"
-edition = "2021"
+[workspace]
+members = [
+    "i3-focus-last",
+]
+resolver = "2"
 
-[dependencies]
-swayipc = "3.0.0"
-gumdrop = "0.8.0"
-serde = "1.0"
-serde_derive = "1.0"
-serde_json = "1.0"
+default-members = [
+    "i3-focus-last",
+]
