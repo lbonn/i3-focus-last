@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "i3-focus-last",
+    "rofi-window-i3",
 ]
 resolver = "2"
 

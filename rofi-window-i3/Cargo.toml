@@ -1,0 +1,17 @@
+[package]
+name = "rofi-window-i3"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "rofi_window_i3"
+crate-type = ["cdylib"]
+
+[dependencies]
+i3-focus-last = { path = "../i3-focus-last" }
+byte-strings = "0.3"
+
+[build-dependencies]
+bindgen = "0.69"
+cc = "1"
+pkg-config = "0.3"
