@@ -10,6 +10,7 @@ crate-type = ["cdylib"]
 [dependencies]
 i3-focus-last = { path = "../i3-focus-last" }
 byte-strings = "0.3"
+swayipc = "3.0.0"
 
 [build-dependencies]
 bindgen = "0.69"

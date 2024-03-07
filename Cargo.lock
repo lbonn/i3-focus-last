@@ -309,6 +309,7 @@ dependencies = [
  "cc",
  "i3-focus-last",
  "pkg-config",
+ "swayipc",
 ]
 
 [[package]]
