@@ -12,25 +12,10 @@ use std::ffi::CString;
 
 use std::os::raw::{c_char, c_int, c_uint, c_void};
 
-use swayipc;
-
 use i3_focus_last::get_windows_by_history;
 
 #[macro_use]
 extern crate byte_strings;
-
-// TODO: find a way with const_concat_bytes!?
-// static name_key : [u8; 128] = const_concat_bytes!(b"display-windowi3");
-static name_key: [c_char; 128] = [
-    0x64, 0x69, 0x73, 0x70, 0x6c, 0x61, 0x79, 0x2d, 0x77, 0x69, 0x6e, 0x64, 0x6f, 0x77, 0x69, 0x33,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-];
 
 struct ModeData {
     pub conn: Option<swayipc::Connection>,
@@ -170,30 +155,36 @@ pub unsafe extern "C" fn _get_message(_m: *const Mode) -> *mut c_char {
     std::ptr::null_mut()
 }
 
+const fn name_key() -> [c_char; 128] {
+    unsafe {
+        *std::mem::transmute::<_, &[c_char; 128]>(const_concat_bytes!(
+            b"display-windowi3",
+            &[0u8; 112]
+        ))
+    }
+}
+
+const fn rofi_mode_init() -> rofi_mode {
+    unsafe {
+        // use this trick to avoid defining fields we don't use
+        // this will help to stay compatible if the rofi API changes
+        let mut m: rofi_mode = std::mem::zeroed();
+
+        m.abi_version = ABI_VERSION;
+        m.name = c_str!("window-i3").as_ptr() as *mut i8;
+        m.cfg_name_key = name_key();
+        m._init = Some(_init);
+        m._destroy = Some(_destroy);
+        m._get_num_entries = Some(_get_num_entries);
+        m._result = Some(_result);
+        m._token_match = Some(_token_match);
+        m._get_display_value = Some(_get_display_value);
+        m._get_message = Some(_get_message);
+        m.type_ = ModeType_MODE_TYPE_SWITCHER;
+
+        m
+    }
+}
+
 #[no_mangle]
-pub static mut mode: rofi_mode = rofi_mode {
-    abi_version: ABI_VERSION,
-    name: c_str!("window-i3").as_ptr() as *mut i8,
-    cfg_name_key: name_key,
-    display_name: std::ptr::null_mut(),
-    _init: Some(_init),
-    _destroy: Some(_destroy),
-    _get_num_entries: Some(_get_num_entries),
-    _result: Some(_result),
-    _token_match: Some(_token_match),
-    _get_display_value: Some(_get_display_value),
-    _selection_changed: None,
-    _get_icon: None,
-    _get_completion: None,
-    _preprocess_input: None,
-    _get_message: Some(_get_message),
-    private_data: std::ptr::null_mut(),
-    free: None,
-    _create: None,
-    _completer_result: None,
-    ed: std::ptr::null_mut(),
-    module: std::ptr::null_mut(),
-    fallback_icon_fetch_uid: 0,
-    fallback_icon_not_found: 0,
-    type_: ModeType_MODE_TYPE_SWITCHER,
-};
+pub static mut mode: rofi_mode = rofi_mode_init();

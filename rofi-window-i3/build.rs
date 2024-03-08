@@ -1,8 +1,6 @@
 use std::env;
 use std::path::PathBuf;
 
-use bindgen;
-
 fn main() {
     println!("cargo:rerun-if-changed=src/wrapper.h");
 
