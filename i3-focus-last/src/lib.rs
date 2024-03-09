@@ -34,6 +34,66 @@ fn extract_windows(root: &swayipc::Node) -> HashMap<i64, &swayipc::Node> {
     out
 }
 
+pub mod utils {
+    use std::collections::HashMap;
+
+    /// Returns the app_id or class of a node
+    pub fn node_display_id(node: &swayipc::Node) -> Option<String> {
+        if let Some(aid) = &node.app_id {
+            return Some(aid.to_string());
+        } else if let Some(props) = &node.window_properties {
+            if let Some(c) = &props.class {
+                return Some(c.to_string());
+            }
+        }
+
+        None
+    }
+
+    fn html_escape(instr: &str) -> String {
+        instr
+            .chars()
+            .flat_map(|c| match c {
+                '&' => "&amp;".chars().collect(),
+                '<' => "&lt;".chars().collect(),
+                '>' => "&gt;".chars().collect(),
+                '"' => "&quot;".chars().collect(),
+                '\'' => "&#39;".chars().collect(),
+                _ => vec![c],
+            })
+            .collect()
+    }
+
+    pub fn window_format_line(node: &swayipc::Node, icons_map: &HashMap<String, String>) -> String {
+        let mut marks = node.marks.join("][");
+        if !node.marks.is_empty() {
+            marks = format!(" [{}]", marks);
+        }
+
+        let disp_id = node_display_id(node).unwrap_or("Container".to_string());
+
+        let mut plus = "".to_string();
+        if let Some(icon) = icons_map.get(&disp_id) {
+            if !icon.is_empty() {
+                plus = format!("\0icon\x1f{}", icon);
+            }
+        }
+
+        let mut name = "".to_string();
+        if let Some(n) = &node.name {
+            name = " - ".to_string() + n;
+        }
+
+        format!(
+            "{}{}<span weight=\"bold\">{}</span>{}\n",
+            html_escape(&disp_id),
+            html_escape(&marks),
+            html_escape(&name),
+            plus
+        )
+    }
+}
+
 /// Returns the list of current windows in most-recently-used order
 ///
 /// It will try to connect to the i3-focus-last server if available and will

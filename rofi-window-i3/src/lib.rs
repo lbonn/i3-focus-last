@@ -13,6 +13,7 @@ use std::ffi::CString;
 use std::os::raw::{c_char, c_int, c_uint, c_void};
 
 use i3_focus_last::get_windows_by_history;
+use i3_focus_last::utils;
 
 #[macro_use]
 extern crate byte_strings;
@@ -119,11 +120,38 @@ pub unsafe extern "C" fn _result(
 }
 
 pub unsafe extern "C" fn _token_match(
-    _m: *const Mode,
+    m: *const Mode,
     tokens: *mut *mut rofi_int_matcher,
     selected_line: c_uint,
 ) -> c_int {
-    0
+    let mode_data = (*m).get_mode_data();
+    let win = &mode_data.windows[selected_line as usize];
+
+    let mut matched = true;
+    let mut t = tokens;
+    while *t != std::ptr::null_mut() {
+        let ftokens: [*mut rofi_int_matcher; 2] = [*t, std::ptr::null_mut()];
+        let mut mtest = 0i32;
+
+        // TODO: check options if we should match all fields
+
+        let empty = "".to_string();
+        let win_name = win.name.as_ref().unwrap_or(&empty);
+        if win_name != "" {
+            mtest = helper_token_match(std::mem::transmute(&ftokens), win_name.as_ptr() as *const i8);
+        }
+
+        let win_appid = utils::node_display_id(win);
+        // TODO
+
+        if mtest == 0 {
+            matched = false;
+        }
+
+        t = t.add(1);
+    }
+
+    matched as i32
 }
 
 pub unsafe extern "C" fn _get_display_value(

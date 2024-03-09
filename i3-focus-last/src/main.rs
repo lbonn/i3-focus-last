@@ -10,6 +10,7 @@ use std::process::{Command, Stdio};
 use std::str::from_utf8;
 
 use i3_focus_last::{focus_nth_last_client, focus_server, get_windows_by_history, ServerOpts};
+use i3_focus_last::utils;
 
 #[derive(Debug, Options)]
 pub struct MenuOpts {
@@ -54,55 +55,6 @@ struct ProgOptions {
     command: Option<ProgCommand>,
 }
 
-fn html_escape(instr: &str) -> String {
-    instr
-        .chars()
-        .flat_map(|c| match c {
-            '&' => "&amp;".chars().collect(),
-            '<' => "&lt;".chars().collect(),
-            '>' => "&gt;".chars().collect(),
-            '"' => "&quot;".chars().collect(),
-            '\'' => "&#39;".chars().collect(),
-            _ => vec![c],
-        })
-        .collect()
-}
-
-fn window_format_line(node: &swayipc::Node, icons_map: &HashMap<String, String>) -> String {
-    let mut marks = node.marks.join("][");
-    if !node.marks.is_empty() {
-        marks = format!(" [{}]", marks);
-    }
-
-    let mut ctype = "Container".to_string();
-    let mut plus = "".to_string();
-    if let Some(aid) = &node.app_id {
-        ctype = aid.to_string();
-    } else if let Some(props) = &node.window_properties {
-        if let Some(c) = &props.class {
-            ctype = c.to_string();
-        }
-    }
-    if let Some(icon) = icons_map.get(&ctype) {
-        if !icon.is_empty() {
-            plus = format!("\0icon\x1f{}", icon);
-        }
-    }
-
-    let mut name = "".to_string();
-    if let Some(n) = &node.name {
-        name = " - ".to_string() + n;
-    }
-
-    format!(
-        "{}{}<span weight=\"bold\">{}</span>{}\n",
-        html_escape(&ctype),
-        html_escape(&marks),
-        html_escape(&name),
-        plus
-    )
-}
-
 fn choose_with_menu(
     menu: &str,
     icons_map: &HashMap<String, String>,
@@ -123,7 +75,7 @@ fn choose_with_menu(
             .as_mut()
             .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "no stdin"))?;
         for w in windows {
-            let line = window_format_line(w, icons_map);
+            let line = utils::window_format_line(w, icons_map);
             stdin.write_all(line.as_bytes())?;
         }
     }
