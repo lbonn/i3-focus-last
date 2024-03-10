@@ -7,6 +7,7 @@
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
 use std::alloc::{dealloc, Layout};
+use std::collections::HashMap;
 use std::error::Error;
 use std::ffi::CString;
 
@@ -157,7 +158,7 @@ pub unsafe extern "C" fn _token_match(
 pub unsafe extern "C" fn _get_display_value(
     m: *const Mode,
     selected_line: c_uint,
-    _state: *mut c_int,
+    state: *mut c_int,
     _attribute_list: *mut *mut GList,
     get_entry: c_int,
 ) -> *mut c_char {
@@ -167,10 +168,12 @@ pub unsafe extern "C" fn _get_display_value(
         return std::ptr::null_mut();
     }
 
-    CString::new(match &mode_data.windows[selected_line as usize].name {
-        Some(t) => t.as_bytes(),
-        None => b"",
-    })
+    // markup
+    // TODO: expose enum
+    *state |= 8;
+
+    let win = &mode_data.windows[selected_line as usize];
+    CString::new(utils::window_format_line(win, &HashMap::new()).as_bytes())
     .unwrap()
     .into_raw()
 }
