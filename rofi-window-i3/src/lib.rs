@@ -1,221 +1,82 @@
-#![allow(non_upper_case_globals)]
-#![allow(non_camel_case_types)]
-#![allow(non_snake_case)]
-#![allow(improper_ctypes)]
-#![allow(unused_variables)]
+pub mod rofi;
 
-include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
-
-use std::alloc::{dealloc, Layout};
 use std::collections::HashMap;
-use std::error::Error;
-use std::ffi::CString;
+use std::ffi::CStr;
 
-use std::os::raw::{c_char, c_int, c_uint, c_void};
+use std::os::raw::c_char;
 
 use i3_focus_last::get_windows_by_history;
 use i3_focus_last::utils;
 
+use rofi::token_match_patterns;
+use rofi::{CRofiMode, EntryStateFlags, MenuReturn, ModeMode, ModeType, Pattern, RofiMode};
+
 #[macro_use]
 extern crate byte_strings;
 
-struct ModeData {
-    pub conn: Option<swayipc::Connection>,
+struct Mode {
+    pub conn: swayipc::Connection,
     pub windows: Vec<swayipc::Node>,
 }
 
-impl ModeData {
-    pub fn new() -> Self {
-        ModeData {
-            conn: None,
-            windows: vec![],
-        }
+impl RofiMode for Mode {
+    const NAME: &'static CStr = c_str!("window-i3");
+    const DISPLAY_NAME: &'static CStr = c_str!("window");
+    const TYPE: ModeType = ModeType::Switcher;
+    const NAME_KEY: &'static [c_char; 128] = rofi_name_key!(b"display-windowi3");
+
+    fn init() -> Result<Self, ()> {
+        let mut conn = swayipc::Connection::new().map_err(|_| ())?;
+        let windows = get_windows_by_history(&mut conn).map_err(|_| ())?;
+
+        Ok(Mode { conn, windows })
     }
 
-    pub fn init_connection(&mut self) -> Result<(), Box<dyn Error + Send + Sync>> {
-        Ok(self.conn = Some(swayipc::Connection::new()?))
+    fn get_num_entries(&self) -> usize {
+        self.windows.len()
     }
 
-    pub fn fetch_windows_list(&mut self) -> Result<(), Box<dyn Error + Send + Sync>> {
-        let wins = get_windows_by_history(self.conn.as_mut().ok_or("err")?)?;
-        self.windows = wins;
-        Ok(())
-    }
-}
+    fn get_display_value(&self, selected_line: usize) -> Option<(String, EntryStateFlags)> {
+        assert!(selected_line < self.windows.len());
 
-impl Mode {
-    fn get_mode_data_mut(&mut self) -> &mut ModeData {
-        if self.private_data.is_null() {
-            let d: Box<ModeData> = Box::new(ModeData::new());
-            self.private_data = Box::into_raw(d) as *mut c_void;
-        }
-        unsafe { &mut *(self.private_data as *mut ModeData) }
-    }
+        let win = &self.windows[selected_line];
 
-    fn get_mode_data(&self) -> &ModeData {
-        unsafe { &*(self.private_data as *const ModeData) }
-    }
-
-    fn destroy_mode_data(&mut self) {
-        unsafe {
-            std::ptr::drop_in_place(self.private_data as *mut ModeData);
-            dealloc(self.private_data as *mut u8, Layout::new::<ModeData>());
-            self.private_data = std::ptr::null_mut();
-        }
-    }
-}
-
-pub unsafe extern "C" fn _init(m: *mut Mode) -> c_int {
-    // this is freed by rofi
-    (*m).display_name = CString::new("window").unwrap().into_raw();
-
-    let mode_data = (*m).get_mode_data_mut();
-
-    (|| -> Result<(), Box<dyn Error + Send + Sync>> {
-        mode_data.init_connection()?;
-
-        mode_data.fetch_windows_list()?;
-
-        Ok(())
-    })()
-    .map_or_else(|_| 0, |_| 1)
-}
-
-pub unsafe extern "C" fn _destroy(m: *mut Mode) {
-    (*m).destroy_mode_data();
-}
-
-pub unsafe extern "C" fn _get_num_entries(m: *const Mode) -> c_uint {
-    let mode_data = (*m).get_mode_data();
-
-    mode_data.windows.len() as c_uint
-}
-
-pub unsafe extern "C" fn _result(
-    m: *mut Mode,
-    mretv: c_int,
-    input: *mut *mut c_char,
-    selected_line: c_uint,
-) -> ModeMode {
-    let mode_data = (*m).get_mode_data_mut();
-    let mut retv = ModeMode_MODE_EXIT;
-    let mretv = mretv as c_uint;
-
-    if mretv & MenuReturn_MENU_NEXT != 0 {
-        retv = ModeMode_NEXT_DIALOG;
-    } else if mretv & MenuReturn_MENU_PREVIOUS != 0 {
-        retv = ModeMode_PREVIOUS_DIALOG;
-    } else if mretv & MenuReturn_MENU_QUICK_SWITCH != 0 {
-        retv = mretv & MenuReturn_MENU_LOWER_MASK;
-    } else if mretv & MenuReturn_MENU_OK != 0 {
-        let win = &mode_data.windows[selected_line as usize];
-        mode_data
-            .conn
-            .as_mut()
-            .unwrap()
-            .run_command(format!("[con_id={}] focus", win.id).as_str())
-            .unwrap();
-    }
-
-    retv
-}
-
-pub unsafe extern "C" fn _token_match(
-    m: *const Mode,
-    tokens: *mut *mut rofi_int_matcher,
-    selected_line: c_uint,
-) -> c_int {
-    let mode_data = (*m).get_mode_data();
-    let win = &mode_data.windows[selected_line as usize];
-
-    let mut matched = true;
-    let mut t = tokens;
-    while *t != std::ptr::null_mut() {
-        let ftokens: [*mut rofi_int_matcher; 2] = [*t, std::ptr::null_mut()];
-        let mut mtest = 0i32;
-
-        // TODO: check options if we should match all fields
-
-        let empty = "".to_string();
-        let win_name = win.name.as_ref().unwrap_or(&empty);
-        if win_name != "" {
-            mtest = helper_token_match(std::mem::transmute(&ftokens), win_name.as_ptr() as *const i8);
-        }
-
-        let win_appid = utils::node_display_id(win);
-        // TODO
-
-        if mtest == 0 {
-            matched = false;
-        }
-
-        t = t.add(1);
-    }
-
-    matched as i32
-}
-
-pub unsafe extern "C" fn _get_display_value(
-    m: *const Mode,
-    selected_line: c_uint,
-    state: *mut c_int,
-    _attribute_list: *mut *mut GList,
-    get_entry: c_int,
-) -> *mut c_char {
-    let mode_data = (*m).get_mode_data();
-
-    if get_entry == 0 {
-        return std::ptr::null_mut();
-    }
-
-    // markup
-    // TODO: expose enum
-    *state |= 8;
-
-    let win = &mode_data.windows[selected_line as usize];
-    CString::new(utils::window_format_line(win, &HashMap::new()).as_bytes())
-    .unwrap()
-    .into_raw()
-}
-
-pub unsafe extern "C" fn _preprocess_input(_m: *mut Mode, input: *const c_char) -> *mut c_char {
-    std::ptr::null_mut()
-}
-
-pub unsafe extern "C" fn _get_message(_m: *const Mode) -> *mut c_char {
-    std::ptr::null_mut()
-}
-
-const fn name_key() -> [c_char; 128] {
-    unsafe {
-        *std::mem::transmute::<_, &[c_char; 128]>(const_concat_bytes!(
-            b"display-windowi3",
-            &[0u8; 112]
+        Some((
+            utils::window_format_line(win, &HashMap::new()),
+            EntryStateFlags::Markup,
         ))
     }
-}
 
-const fn rofi_mode_init() -> rofi_mode {
-    unsafe {
-        // use this trick to avoid defining fields we don't use
-        // this will help to stay compatible if the rofi API changes
-        let mut m: rofi_mode = std::mem::zeroed();
+    fn result(&mut self, mretv: MenuReturn, selected_line: usize) -> Option<ModeMode> {
+        if mretv.intersects(MenuReturn::CustomAction) {
+            return None;
+        } else if mretv.intersects(MenuReturn::Ok) {
+            assert!(selected_line < self.windows.len());
 
-        m.abi_version = ABI_VERSION;
-        m.name = c_str!("window-i3").as_ptr() as *mut i8;
-        m.cfg_name_key = name_key();
-        m._init = Some(_init);
-        m._destroy = Some(_destroy);
-        m._get_num_entries = Some(_get_num_entries);
-        m._result = Some(_result);
-        m._token_match = Some(_token_match);
-        m._get_display_value = Some(_get_display_value);
-        m._get_message = Some(_get_message);
-        m.type_ = ModeType_MODE_TYPE_SWITCHER;
+            let win = &self.windows[selected_line];
+            self.conn
+                .run_command(format!("[con_id={}] focus", win.id).as_str())
+                .unwrap();
+        }
 
-        m
+        Some(ModeMode::Exit)
+    }
+
+    fn token_match(&self, patterns: Vec<&Pattern>, selected_line: usize) -> bool {
+        assert!(selected_line < self.windows.len());
+
+        let win = &self.windows[selected_line];
+
+        // TODO check other fields (appid) if requested
+
+        if let Some(name) = win.name.as_ref() {
+            if !token_match_patterns(&patterns, name) {
+                return false;
+            }
+        }
+        true
     }
 }
 
 #[no_mangle]
-pub static mut mode: rofi_mode = rofi_mode_init();
+pub static mut mode: CRofiMode = rofi::rofi_c_mode::<Mode>();

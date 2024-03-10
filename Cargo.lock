@@ -305,6 +305,7 @@ name = "rofi-window-i3"
 version = "0.1.0"
 dependencies = [
  "bindgen",
+ "bitflags",
  "byte-strings",
  "cc",
  "i3-focus-last",
