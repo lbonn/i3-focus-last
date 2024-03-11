@@ -75,7 +75,7 @@ fn choose_with_menu(
             .as_mut()
             .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "no stdin"))?;
         for w in windows {
-            let line = utils::window_format_line(w, icons_map);
+            let line = utils::window_format_line(w, Some(icons_map));
             stdin.write_all(line.as_bytes())?;
         }
     }
@@ -87,7 +87,7 @@ fn choose_with_menu(
     Ok(s.parse()?)
 }
 
-static DEFAULT_ICONS: &[(&str, &str)] = &[("firefox", "firefox"), ("Chromium", "chromium")];
+static DEFAULT_ICONS: &[(&str, &str)] = &[("Chromium", "chromium")];
 
 fn read_icons_map(icons_map: &str) -> HashMap<String, String> {
     let mut m = HashMap::new();

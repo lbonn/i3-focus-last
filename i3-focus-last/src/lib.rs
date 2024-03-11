@@ -64,18 +64,27 @@ pub mod utils {
             .collect()
     }
 
-    pub fn window_format_line(node: &swayipc::Node, icons_map: &HashMap<String, String>) -> String {
+    pub fn window_format_line(
+        node: &swayipc::Node,
+        icons_map: Option<&HashMap<String, String>>,
+    ) -> String {
         let mut marks = node.marks.join("][");
         if !node.marks.is_empty() {
             marks = format!(" [{}]", marks);
         }
 
-        let disp_id = node_display_id(node).unwrap_or("Container".to_string());
+        let disp_id = node_display_id(node);
 
         let mut plus = "".to_string();
-        if let Some(icon) = icons_map.get(&disp_id) {
-            if !icon.is_empty() {
-                plus = format!("\0icon\x1f{}", icon);
+        if let Some(icons_map) = icons_map.as_ref() {
+            if let Some(disp_id) = disp_id.as_ref() {
+                if let Some(icon) = icons_map.get(disp_id) {
+                    if !icon.is_empty() {
+                        plus = format!("\0icon\x1f{}", icon);
+                    }
+                } else {
+                    plus = format!("\0icon\x1f{}", disp_id);
+                }
             }
         }
 
@@ -86,7 +95,7 @@ pub mod utils {
 
         format!(
             "{}{}<span weight=\"bold\">{}</span>{}\n",
-            html_escape(&disp_id),
+            html_escape(&disp_id.unwrap_or("Container".to_string())),
             html_escape(&marks),
             html_escape(&name),
             plus

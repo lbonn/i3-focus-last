@@ -1,6 +1,5 @@
 pub mod rofi;
 
-use std::collections::HashMap;
 use std::ffi::CStr;
 
 use std::os::raw::c_char;
@@ -42,7 +41,7 @@ impl RofiMode for Mode {
         let win = &self.windows[selected_line];
 
         Some((
-            utils::window_format_line(win, &HashMap::new()),
+            utils::window_format_line(win, None),
             EntryStateFlags::Markup,
         ))
     }
