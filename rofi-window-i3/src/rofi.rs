@@ -78,6 +78,40 @@ macro_rules! rofi_name_key {
     };
 }
 
+/// API that can be called from rust modes
+pub mod helpers {
+    use crate::rofi::c;
+    use crate::rofi::*;
+
+    pub fn token_match_pattern(pattern: &Pattern, token: &str) -> bool {
+        unsafe {
+            // :)
+            let mself: *mut Pattern = &mut (std::mem::transmute(*pattern));
+            let mut ftokens: [*mut c::rofi_int_matcher; 2] = [mself, std::ptr::null_mut()];
+            c::helper_token_match(ftokens.as_mut_ptr(), token.as_ptr() as *const i8) != 0
+        }
+    }
+
+    pub fn token_match_patterns(patterns: &Vec<&Pattern>, token: &str) -> bool {
+        let mut ftokens: Vec<*mut Pattern> = vec![];
+        unsafe {
+            for p in patterns {
+                ftokens.push(&mut (std::mem::transmute(**p)));
+            }
+            ftokens.push(std::ptr::null_mut());
+
+            c::helper_token_match(ftokens.as_mut_ptr(), token.as_ptr() as *const i8) != 0
+        }
+    }
+
+    pub fn rofi_view_hide() {
+        // this is internal API, subject to break!
+        unsafe {
+            c::rofi_view_hide();
+        }
+    }
+}
+
 pub trait RofiMode: Sized {
     const NAME: &'static CStr;
     const DISPLAY_NAME: &'static CStr;
@@ -163,26 +197,6 @@ unsafe extern "C" fn _result<T: RofiMode>(
     ) {
         Some(e) => e as c_uint,
         None => (mretv as u32) & c::MenuReturn_MENU_LOWER_MASK,
-    }
-}
-
-pub fn token_match_pattern(pattern: &Pattern, token: &str) -> bool {
-    unsafe {
-        // :)
-        let mself: *mut Pattern = &mut (std::mem::transmute(*pattern));
-        let mut ftokens: [*mut c::rofi_int_matcher; 2] = [mself, std::ptr::null_mut()];
-        c::helper_token_match(ftokens.as_mut_ptr(), token.as_ptr() as *const i8) != 0
-    }
-}
-pub fn token_match_patterns(patterns: &Vec<&Pattern>, token: &str) -> bool {
-    let mut ftokens: Vec<*mut Pattern> = vec![];
-    unsafe {
-        for p in patterns {
-            ftokens.push(&mut (std::mem::transmute(**p)));
-        }
-        ftokens.push(std::ptr::null_mut());
-
-        c::helper_token_match(ftokens.as_mut_ptr(), token.as_ptr() as *const i8) != 0
     }
 }
 

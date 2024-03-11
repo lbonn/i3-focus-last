@@ -8,7 +8,7 @@ use std::os::raw::c_char;
 use i3_focus_last::get_windows_by_history;
 use i3_focus_last::utils;
 
-use rofi::token_match_patterns;
+use rofi::helpers::{rofi_view_hide, token_match_patterns};
 use rofi::{CRofiMode, EntryStateFlags, MenuReturn, ModeMode, ModeType, Pattern, RofiMode};
 
 #[macro_use]
@@ -52,6 +52,8 @@ impl RofiMode for Mode {
             return None;
         } else if mretv.intersects(MenuReturn::Ok) {
             assert!(selected_line < self.windows.len());
+
+            rofi_view_hide();
 
             let win = &self.windows[selected_line];
             self.conn
