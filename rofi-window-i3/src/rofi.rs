@@ -161,14 +161,12 @@ impl c::rofi_mode {
 unsafe extern "C" fn _init<T: RofiMode>(mc: *mut c::rofi_mode) -> c_int {
     (*mc).display_name = T::DISPLAY_NAME.to_owned().into_raw();
 
-    let mode_data_opt = (|| -> Result<_, ()> { Ok(ModeData::<T>::init()?) })().ok();
-
-    match mode_data_opt {
-        None => 0,
-        Some(d) => {
+    match ModeData::<T>::init() {
+        Ok(d) => {
             (*mc).private_data = Box::into_raw(Box::new(d)) as *mut c_void;
             1
         }
+        Err(_) => 0,
     }
 }
 
