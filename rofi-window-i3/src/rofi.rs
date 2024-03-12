@@ -83,6 +83,28 @@ macro_rules! rofi_name_key {
     };
 }
 
+trait ToRofiStr<'a> {
+    fn to_rofi_str(&'a self) -> *mut i8;
+}
+
+impl ToRofiStr<'_> for String {
+    fn to_rofi_str(&self) -> *mut i8 {
+        self.as_str().to_rofi_str()
+    }
+}
+
+impl<'a> ToRofiStr<'a> for &'a str {
+    fn to_rofi_str(&'a self) -> *mut i8 {
+        unsafe { c::g_strndup(self.as_ptr() as *const i8, self.len() as u64) }
+    }
+}
+
+impl<'a> ToRofiStr<'a> for &'a CStr {
+    fn to_rofi_str(&'a self) -> *mut i8 {
+        unsafe { c::g_strdup(self.as_ptr()) }
+    }
+}
+
 /// API that can be called from rust modes
 pub mod helpers {
     use crate::rofi::c;
@@ -90,14 +112,16 @@ pub mod helpers {
 
     pub fn find_arg_bool(name: &str) -> bool {
         unsafe {
-            c::find_arg(name.as_ptr() as *const i8) != 0
+            let name = CString::new(name).unwrap();
+            c::find_arg(name.as_ptr()) != 0
         }
     }
 
     pub fn find_arg_i32(name: &str) -> Option<i32> {
         unsafe {
-            let mut v : i32 = 0;
-            if c::find_arg_int(name.as_ptr() as *const i8, &mut v) != 0 {
+            let mut v: i32 = 0;
+            let name = CString::new(name).unwrap();
+            if c::find_arg_int(name.as_ptr(), &mut v) != 0 {
                 return Some(v);
             }
             None
@@ -106,8 +130,9 @@ pub mod helpers {
 
     pub fn find_arg_str(name: &str) -> Option<String> {
         unsafe {
-            let mut v : *mut c_char = ptr::null_mut();
-            if c::find_arg_str(name.as_ptr() as *const i8, &mut v) != 0 {
+            let name = CString::new(name).unwrap();
+            let mut v: *mut c_char = ptr::null_mut();
+            if c::find_arg_str(name.as_ptr(), &mut v) != 0 {
                 return Some(CStr::from_ptr(v).to_str().unwrap().to_string());
             }
             None
@@ -119,7 +144,8 @@ pub mod helpers {
             // :)
             let mself: *mut Pattern = &mut (std::mem::transmute(*pattern));
             let mut ftokens: [*mut c::rofi_int_matcher; 2] = [mself, ptr::null_mut()];
-            c::helper_token_match(ftokens.as_mut_ptr(), token.as_ptr() as *const i8) != 0
+            let ctoken = CString::new(token).unwrap();
+            c::helper_token_match(ftokens.as_mut_ptr(), ctoken.into_raw()) != 0
         }
     }
 
@@ -131,7 +157,8 @@ pub mod helpers {
             }
             ftokens.push(ptr::null_mut());
 
-            c::helper_token_match(ftokens.as_mut_ptr(), token.as_ptr() as *const i8) != 0
+            let ctoken = CString::new(token).unwrap();
+            c::helper_token_match(ftokens.as_mut_ptr(), ctoken.into_raw()) != 0
         }
     }
 
@@ -187,7 +214,7 @@ impl c::rofi_mode {
 }
 
 unsafe extern "C" fn _init<T: RofiMode>(mc: *mut c::rofi_mode) -> c_int {
-    (*mc).display_name = T::DISPLAY_NAME.to_owned().into_raw();
+    (*mc).display_name = T::DISPLAY_NAME.to_rofi_str();
 
     match ModeData::<T>::init() {
         Ok(d) => {
@@ -229,7 +256,7 @@ unsafe extern "C" fn _get_display_value<T: RofiMode>(
             return ptr::null_mut();
         }
 
-        CString::new(dv.as_bytes()).unwrap().into_raw()
+        dv.to_rofi_str()
     } else {
         ptr::null_mut()
     }
@@ -291,9 +318,13 @@ unsafe extern "C" fn _get_icon<T: RofiMode>(
     let mut icon_uid = None;
     if let Some(uid) = icon_cache.get(&entry) {
         icon_uid = Some(*uid)
-    } else if let Some(mut query) = m.mode.icon_query(selected_line as usize) {
+    } else if let Some(query) = m
+        .mode
+        .icon_query(selected_line as usize)
+        .map(|v| CString::new(v).unwrap())
+    {
         let uid = c::rofi_icon_fetcher_query(
-            query.as_mut_ptr() as *const i8,
+            query.as_ptr() as *const i8,
             height as ::std::os::raw::c_int,
         );
 
