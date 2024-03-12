@@ -122,7 +122,7 @@ pub trait RofiMode: Sized {
     fn get_num_entries(&self) -> usize;
     // TODO: pango attributes
     fn get_display_value(&self, selected_line: usize) -> Option<(String, EntryStateFlags)>;
-    fn result(&mut self, mretv: MenuReturn, selected_line: usize) -> Option<ModeMode>;
+    fn result(&self, mretv: MenuReturn, selected_line: usize) -> Option<ModeMode>;
     fn token_match(&self, patterns: Vec<&Pattern>, selected_line: usize) -> bool;
 }
 

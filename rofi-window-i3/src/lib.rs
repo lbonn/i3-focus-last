@@ -2,6 +2,8 @@ pub mod rofi;
 
 use std::ffi::CStr;
 
+use std::sync::Mutex;
+
 use std::os::raw::c_char;
 
 use i3_focus_last::get_windows_by_history;
@@ -14,7 +16,7 @@ use rofi::{CRofiMode, EntryStateFlags, MenuReturn, ModeMode, ModeType, Pattern, 
 extern crate byte_strings;
 
 struct Mode {
-    pub conn: swayipc::Connection,
+    pub conn: Mutex<swayipc::Connection>,
     pub windows: Vec<swayipc::Node>,
 }
 
@@ -28,7 +30,10 @@ impl RofiMode for Mode {
         let mut conn = swayipc::Connection::new().map_err(|_| ())?;
         let windows = get_windows_by_history(&mut conn).map_err(|_| ())?;
 
-        Ok(Mode { conn, windows })
+        Ok(Mode {
+            conn: Mutex::new(conn),
+            windows,
+        })
     }
 
     fn get_num_entries(&self) -> usize {
@@ -46,7 +51,7 @@ impl RofiMode for Mode {
         ))
     }
 
-    fn result(&mut self, mretv: MenuReturn, selected_line: usize) -> Option<ModeMode> {
+    fn result(&self, mretv: MenuReturn, selected_line: usize) -> Option<ModeMode> {
         if mretv.intersects(MenuReturn::CustomAction) {
             return None;
         } else if mretv.intersects(MenuReturn::Ok) {
@@ -56,6 +61,8 @@ impl RofiMode for Mode {
 
             let win = &self.windows[selected_line];
             self.conn
+                .lock()
+                .unwrap()
                 .run_command(format!("[con_id={}] focus", win.id).as_str())
                 .unwrap();
         }
