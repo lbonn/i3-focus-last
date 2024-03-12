@@ -171,7 +171,10 @@ pub fn get_windows_by_history(
     let t = conn.get_tree()?;
     let ws = extract_windows(&t);
 
-    let mut hist = get_focus_history().unwrap_or_default();
+    let mut hist = get_focus_history().unwrap_or_else(|e| {
+        eprintln!("warning: could not get focus history: \"{}\", order will be arbitrary", e);
+        vec![]
+    });
 
     let mut ordered_windows: Vec<swayipc::Node> = vec![];
     let mut removed = HashSet::new();
