@@ -13,4 +13,7 @@ pub fn socket_filename() -> Result<String, Box<env::VarError>> {
 pub enum Cmd {
     SwitchTo(usize),
     GetHistory,
+    PushToHistory(i64),
+    InhibitHistory(Option<u64>),
+    InhibitHistoryRelease(u64),
 }

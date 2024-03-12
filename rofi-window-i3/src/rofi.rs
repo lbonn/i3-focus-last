@@ -185,6 +185,9 @@ pub trait RofiMode: Sized {
     fn result(&self, mretv: MenuReturn, selected_line: usize) -> Option<ModeMode>;
     fn token_match(&self, patterns: &[Pattern], selected_line: usize) -> bool;
     fn icon_query(&self, selected_line: usize) -> Option<String>;
+
+    // unstable
+    fn selection_changed(&self, selected_line: Option<usize>) -> bool;
 }
 
 #[derive(Debug, Eq, PartialEq, Hash)]
@@ -337,10 +340,26 @@ unsafe extern "C" fn _get_icon<T: RofiMode>(
         .unwrap_or(ptr::null_mut())
 }
 
+// unstable API....
+unsafe extern "C" fn _selection_changed<T: RofiMode>(
+    mc: *const c::rofi_mode,
+    selected_line: c_uint,
+) -> c_int {
+    let m = (*mc).get::<T>();
+    let line = if selected_line == u32::MAX {
+        None
+    } else {
+        Some(selected_line as usize)
+    };
+
+    m.mode.selection_changed(line).into()
+}
+
 pub const fn rofi_c_mode<T: RofiMode>() -> c::rofi_mode {
     unsafe {
         let mut mc: c::rofi_mode = std::mem::zeroed();
         mc.abi_version = c::ABI_VERSION;
+        mc.type_ = T::TYPE as u32;
         mc.name = T::NAME.as_ptr() as *mut i8;
         mc.cfg_name_key = *T::NAME_KEY;
 
@@ -351,7 +370,8 @@ pub const fn rofi_c_mode<T: RofiMode>() -> c::rofi_mode {
         mc._result = Some(_result::<T>);
         mc._token_match = Some(_token_match::<T>);
         mc._get_icon = Some(_get_icon::<T>);
-        mc.type_ = T::TYPE as u32;
+
+        mc._selection_changed = Some(_selection_changed::<T>);
 
         mc
     }

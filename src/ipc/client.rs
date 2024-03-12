@@ -33,3 +33,38 @@ pub fn get_focus_history() -> Result<Vec<i64>, Box<dyn Error>> {
         })??;
     Ok(out)
 }
+
+pub fn push_to_history(node: i64) -> Result<(), Box<dyn Error>> {
+    let mut stream = UnixStream::connect(socket_filename()?)?;
+
+    serde_json::to_vec(&Cmd::PushToHistory(node))
+        .map(move |b| stream.write_all(b.as_slice()))
+        .ok();
+
+    Ok(())
+}
+
+pub fn take_inhibit_history(lease: Option<u64>) -> Result<u64, Box<dyn Error>> {
+    let mut stream = UnixStream::connect(socket_filename()?)?;
+
+    let out = serde_json::to_vec(&Cmd::InhibitHistory(lease)).map(
+        move |b| -> Result<_, Box<dyn Error>> {
+            stream.write_all(b.as_slice())?;
+            let mut de = serde_json::Deserializer::from_reader(&stream);
+            let o = u64::deserialize(&mut de)?;
+            Ok(o)
+        },
+    )??;
+
+    Ok(out)
+}
+
+pub fn release_inhibit_history(lease: u64) -> Result<(), Box<dyn Error>> {
+    let mut stream = UnixStream::connect(socket_filename()?)?;
+
+    serde_json::to_vec(&Cmd::InhibitHistoryRelease(lease))
+        .map(move |b| stream.write_all(b.as_slice()))
+        .ok();
+
+    Ok(())
+}
