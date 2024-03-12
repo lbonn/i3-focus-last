@@ -147,6 +147,18 @@ pub mod utils {
             plus
         )
     }
+
+    pub fn get_focused_window(
+        conn: &mut swayipc::Connection,
+    ) -> Result<i64, Box<dyn Error + Send + Sync>> {
+        let mut node = conn.get_tree()?;
+
+        while !node.focused {
+            let fid = node.focus.into_iter().next().ok_or("")?;
+            node = node.nodes.into_iter().find(|n| n.id == fid).ok_or("")?;
+        }
+        Ok(node.id)
+    }
 }
 
 /// Returns the list of current windows in most-recently-used order

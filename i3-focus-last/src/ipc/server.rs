@@ -15,6 +15,7 @@ use swayipc::{Connection, EventType};
 use swayipc::{Event, WindowChange};
 
 use crate::ipc::{socket_filename, Cmd};
+use crate::utils;
 
 static BUFFER_SIZE: usize = 100;
 
@@ -82,27 +83,14 @@ fn cmd_server(windows: Arc<Mutex<VecDeque<i64>>>) -> Result<(), Box<dyn Error + 
     Ok(())
 }
 
-fn get_focused_window() -> Result<Result<i64, ()>, Box<dyn Error + Send + Sync>> {
-    let mut conn = Connection::new()?;
-    let mut node = conn.get_tree()?;
-
-    Ok(|| -> Result<_, ()> {
-        while !node.focused {
-            let fid = node.focus.into_iter().next().ok_or(())?;
-            node = node.nodes.into_iter().find(|n| n.id == fid).ok_or(())?;
-        }
-        Ok(node.id)
-    }())
-}
-
 /// Run the focus server that answers clients using the IPC
 pub fn focus_server() -> Result<(), Box<dyn Error + Send + Sync>> {
-    let conn = Connection::new()?;
+    let mut conn = Connection::new()?;
     let windows = Arc::new(Mutex::new(VecDeque::new()));
     let windowsc = Arc::clone(&windows);
 
     // Add the current focused window to bootstrap the list
-    get_focused_window()?
+    utils::get_focused_window(&mut conn)
         .map(|wid| {
             let mut windows = windows.lock().unwrap();
 
