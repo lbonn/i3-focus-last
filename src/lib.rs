@@ -209,5 +209,7 @@ pub fn get_windows_by_history(
 }
 
 // re-exports
-pub use crate::ipc::client::focus_nth_last_client;
+pub use crate::ipc::client::{
+    focus_nth_last_client, push_to_history, release_inhibit_history, take_inhibit_history,
+};
 pub use crate::ipc::server::{ServerOpts, focus_server};
