@@ -12,6 +12,8 @@ mod c {
     #![allow(non_snake_case)]
     #![allow(improper_ctypes)]
     #![allow(dead_code)]
+    #![allow(unknown_lints)]
+    #![allow(clippy::all)]
     include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 }
 
@@ -60,11 +62,11 @@ bitflags! {
 #[repr(u32)]
 #[derive(Debug)]
 pub enum ModeMode {
-    Exit = c::ModeMode_MODE_EXIT as u32,
-    NextDialog = c::ModeMode_NEXT_DIALOG as u32,
-    ReloadDialog = c::ModeMode_RELOAD_DIALOG as u32,
-    PreviousDialog = c::ModeMode_PREVIOUS_DIALOG as u32,
-    ResetDialog = c::ModeMode_RESET_DIALOG as u32,
+    Exit = c::ModeMode_MODE_EXIT,
+    NextDialog = c::ModeMode_NEXT_DIALOG,
+    ReloadDialog = c::ModeMode_RELOAD_DIALOG,
+    PreviousDialog = c::ModeMode_PREVIOUS_DIALOG,
+    ResetDialog = c::ModeMode_RESET_DIALOG,
 }
 
 #[macro_export]
@@ -233,7 +235,7 @@ unsafe extern "C" fn _token_match<T: RofiMode>(
 ) -> c_int {
     let mut tokenv: Vec<&Pattern> = vec![];
     let mut t = tokens;
-    while *t != ptr::null_mut() {
+    while !t.is_null() {
         tokenv.push(&**t);
         t = t.add(1);
     }
