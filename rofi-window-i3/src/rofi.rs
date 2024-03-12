@@ -127,7 +127,7 @@ pub trait RofiMode: Sized {
     fn get_display_value(&self, selected_line: usize) -> Option<(String, EntryStateFlags)>;
     fn result(&self, mretv: MenuReturn, selected_line: usize) -> Option<ModeMode>;
     fn token_match(&self, patterns: Vec<&Pattern>, selected_line: usize) -> bool;
-    fn icon_query(&self, select_line: usize) -> Option<String>;
+    fn icon_query(&self, selected_line: usize) -> Option<String>;
 }
 
 #[derive(Debug, Eq, PartialEq, Hash)]
