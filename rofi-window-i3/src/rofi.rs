@@ -88,6 +88,32 @@ pub mod helpers {
     use crate::rofi::c;
     use crate::rofi::*;
 
+    pub fn find_arg_bool(name: &str) -> bool {
+        unsafe {
+            c::find_arg(name.as_ptr() as *const i8) != 0
+        }
+    }
+
+    pub fn find_arg_i32(name: &str) -> Option<i32> {
+        unsafe {
+            let mut v : i32 = 0;
+            if c::find_arg_int(name.as_ptr() as *const i8, &mut v) != 0 {
+                return Some(v);
+            }
+            None
+        }
+    }
+
+    pub fn find_arg_str(name: &str) -> Option<String> {
+        unsafe {
+            let mut v : *mut c_char = ptr::null_mut();
+            if c::find_arg_str(name.as_ptr() as *const i8, &mut v) != 0 {
+                return Some(CStr::from_ptr(v).to_str().unwrap().to_string());
+            }
+            None
+        }
+    }
+
     pub fn token_match_pattern(pattern: &Pattern, token: &str) -> bool {
         unsafe {
             // :)
