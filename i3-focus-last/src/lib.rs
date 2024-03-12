@@ -172,7 +172,10 @@ pub fn get_windows_by_history(
     let ws = extract_windows(&t);
 
     let mut hist = get_focus_history().unwrap_or_else(|e| {
-        eprintln!("warning: could not get focus history: \"{}\", order will be arbitrary", e);
+        eprintln!(
+            "warning: could not get focus history: \"{}\", order will be arbitrary",
+            e
+        );
         vec![]
     });
 

@@ -154,39 +154,31 @@ impl<T: RofiMode> ModeData<T> {
 
 impl c::rofi_mode {
     fn get<T: RofiMode>(&self) -> &ModeData<T> {
-        unsafe {
-            let p = self.private_data as *const Option<ModeData<T>>;
-
-            (*p).as_ref().unwrap()
-        }
+        unsafe { &*(self.private_data as *const ModeData<T>) }
     }
 }
 
 unsafe extern "C" fn _init<T: RofiMode>(mc: *mut c::rofi_mode) -> c_int {
     (*mc).display_name = T::DISPLAY_NAME.to_owned().into_raw();
 
-    (|| -> Result<(), ()> {
-        let d = Box::new(Some(ModeData::<T>::init()?));
-        (*mc).private_data = Box::into_raw(d) as *mut c_void;
+    let mode_data_opt = (|| -> Result<_, ()> { Ok(ModeData::<T>::init()?) })().ok();
 
-        Ok(())
-    })()
-    .map_or_else(
-        |_| {
-            let d = Box::<Option<ModeData<T>>>::new(None);
-            (*mc).private_data = Box::into_raw(d) as *mut c_void;
-            0
-        },
-        |_| 1,
-    )
+    match mode_data_opt {
+        None => 0,
+        Some(d) => {
+            (*mc).private_data = Box::into_raw(Box::new(d)) as *mut c_void;
+            1
+        }
+    }
 }
 
 unsafe extern "C" fn _destroy<T: RofiMode>(mc: *mut c::rofi_mode) {
-    ptr::drop_in_place((*mc).private_data as *mut Option<ModeData<T>>);
-    dealloc(
-        (*mc).private_data as *mut u8,
-        Layout::new::<Option<ModeData<T>>>(),
-    );
+    if (*mc).private_data.is_null() {
+        return;
+    }
+
+    ptr::drop_in_place((*mc).private_data as *mut ModeData<T>);
+    dealloc((*mc).private_data as *mut u8, Layout::new::<ModeData<T>>());
     (*mc).private_data = ptr::null_mut();
 }
 
