@@ -261,7 +261,7 @@ unsafe extern "C" fn _token_match<T: RofiMode>(
 ) -> c_int {
     let mut tokenv: Vec<&Pattern> = vec![];
     let mut t = tokens;
-    while !t.is_null() {
+    while !(*t).is_null() {
         tokenv.push(&**t);
         t = t.add(1);
     }
