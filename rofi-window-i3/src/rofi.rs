@@ -1,7 +1,10 @@
 use bitflags::bitflags;
 use std::alloc::{dealloc, Layout};
+use std::collections::HashMap;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_uint, c_void};
+use std::ptr;
+use std::sync::Mutex;
 
 mod c {
     #![allow(non_camel_case_types)]
@@ -87,7 +90,7 @@ pub mod helpers {
         unsafe {
             // :)
             let mself: *mut Pattern = &mut (std::mem::transmute(*pattern));
-            let mut ftokens: [*mut c::rofi_int_matcher; 2] = [mself, std::ptr::null_mut()];
+            let mut ftokens: [*mut c::rofi_int_matcher; 2] = [mself, ptr::null_mut()];
             c::helper_token_match(ftokens.as_mut_ptr(), token.as_ptr() as *const i8) != 0
         }
     }
@@ -98,7 +101,7 @@ pub mod helpers {
             for p in patterns {
                 ftokens.push(&mut (std::mem::transmute(**p)));
             }
-            ftokens.push(std::ptr::null_mut());
+            ftokens.push(ptr::null_mut());
 
             c::helper_token_match(ftokens.as_mut_ptr(), token.as_ptr() as *const i8) != 0
         }
@@ -124,15 +127,34 @@ pub trait RofiMode: Sized {
     fn get_display_value(&self, selected_line: usize) -> Option<(String, EntryStateFlags)>;
     fn result(&self, mretv: MenuReturn, selected_line: usize) -> Option<ModeMode>;
     fn token_match(&self, patterns: Vec<&Pattern>, selected_line: usize) -> bool;
+    fn icon_query(&self, select_line: usize) -> Option<String>;
+}
+
+#[derive(Debug, Eq, PartialEq, Hash)]
+struct IconCacheEntry {
+    line: usize,
+    height: usize,
+    scale: usize,
+}
+
+type IconCache = HashMap<IconCacheEntry, c_uint>;
+
+struct ModeData<T: RofiMode> {
+    mode: T,
+    icon_cache: Mutex<IconCache>,
+}
+
+impl<T: RofiMode> ModeData<T> {
+    fn init() -> Result<Self, ()> {
+        let mode = T::init()?;
+        let icon_cache = Mutex::new(HashMap::new());
+        Ok(ModeData { mode, icon_cache })
+    }
 }
 
 impl c::rofi_mode {
-    fn get<T: RofiMode>(&self) -> &T {
-        unsafe { &*(self.private_data as *const T) }
-    }
-
-    fn get_mut<T: RofiMode>(&mut self) -> &mut T {
-        unsafe { &mut *(self.private_data as *mut T) }
+    fn get<T: RofiMode>(&self) -> &ModeData<T> {
+        unsafe { &*(self.private_data as *const ModeData<T>) }
     }
 }
 
@@ -140,7 +162,7 @@ unsafe extern "C" fn _init<T: RofiMode>(mc: *mut c::rofi_mode) -> c_int {
     (*mc).display_name = T::DISPLAY_NAME.to_owned().into_raw();
 
     (|| -> Result<(), ()> {
-        let d = Box::new(T::init()?);
+        let d = Box::new(ModeData::<T>::init()?);
         (*mc).private_data = Box::into_raw(d) as *mut c_void;
 
         Ok(())
@@ -149,14 +171,14 @@ unsafe extern "C" fn _init<T: RofiMode>(mc: *mut c::rofi_mode) -> c_int {
 }
 
 unsafe extern "C" fn _destroy<T: RofiMode>(mc: *mut c::rofi_mode) {
-    std::ptr::drop_in_place((*mc).private_data as *mut T);
-    dealloc((*mc).private_data as *mut u8, Layout::new::<T>());
-    (*mc).private_data = std::ptr::null_mut();
+    ptr::drop_in_place((*mc).private_data as *mut ModeData<T>);
+    dealloc((*mc).private_data as *mut u8, Layout::new::<ModeData<T>>());
+    (*mc).private_data = ptr::null_mut();
 }
 
 unsafe extern "C" fn _get_num_entries<T: RofiMode>(mc: *const c::rofi_mode) -> c_uint {
     let m = (*mc).get::<T>();
-    m.get_num_entries().try_into().unwrap()
+    m.mode.get_num_entries().try_into().unwrap()
 }
 
 unsafe extern "C" fn _get_display_value<T: RofiMode>(
@@ -168,16 +190,16 @@ unsafe extern "C" fn _get_display_value<T: RofiMode>(
 ) -> *mut c_char {
     let m = (*mc).get::<T>();
 
-    if let Some((dv, flags)) = m.get_display_value(selected_line as usize) {
+    if let Some((dv, flags)) = m.mode.get_display_value(selected_line as usize) {
         *state = flags.bits() as i32;
 
         if get_entry == 0 {
-            return std::ptr::null_mut();
+            return ptr::null_mut();
         }
 
         CString::new(dv.as_bytes()).unwrap().into_raw()
     } else {
-        std::ptr::null_mut()
+        ptr::null_mut()
     }
 }
 
@@ -187,11 +209,11 @@ unsafe extern "C" fn _result<T: RofiMode>(
     _input: *mut *mut c_char,
     selected_line: c_uint,
 ) -> c::ModeMode {
-    let m = (*mc).get_mut::<T>();
+    let m = (*mc).get::<T>();
 
     // TODO: pass input
 
-    match m.result(
+    match m.mode.result(
         MenuReturn::from_bits(mretv as u32).unwrap(),
         selected_line.try_into().unwrap(),
     ) {
@@ -207,13 +229,49 @@ unsafe extern "C" fn _token_match<T: RofiMode>(
 ) -> c_int {
     let mut tokenv: Vec<&Pattern> = vec![];
     let mut t = tokens;
-    while *t != std::ptr::null_mut() {
+    while *t != ptr::null_mut() {
         tokenv.push(&**t);
         t = t.add(1);
     }
 
     let m = (*mc).get::<T>();
-    m.token_match(tokenv, selected_line as usize) as c_int
+    m.mode.token_match(tokenv, selected_line as usize) as c_int
+}
+
+unsafe extern "C" fn _get_icon<T: RofiMode>(
+    mc: *const c::rofi_mode,
+    selected_line: c_uint,
+    height: c_uint,
+) -> *mut c::cairo_surface_t {
+    let m = (*mc).get::<T>();
+
+    let entry = IconCacheEntry {
+        line: selected_line as usize,
+        height: height as usize,
+        scale: 1, // TODO: handle this "cleanly"
+    };
+
+    // it's not a problem to keep this lock open for a while
+    // as _get_icon calls (like all the mode api) are never
+    // called in parallel
+    let mut icon_cache = m.icon_cache.lock().unwrap();
+
+    let mut icon_uid = None;
+    if let Some(uid) = icon_cache.get(&entry) {
+        icon_uid = Some(*uid)
+    } else if let Some(mut query) = m.mode.icon_query(selected_line as usize) {
+        let uid = c::rofi_icon_fetcher_query(
+            query.as_mut_ptr() as *const i8,
+            height as ::std::os::raw::c_int,
+        );
+
+        icon_cache.insert(entry, uid);
+        icon_uid = Some(uid);
+    }
+
+    icon_uid
+        .map(|u| c::rofi_icon_fetcher_get(u))
+        .unwrap_or(ptr::null_mut())
 }
 
 pub const fn rofi_c_mode<T: RofiMode>() -> c::rofi_mode {
@@ -229,6 +287,7 @@ pub const fn rofi_c_mode<T: RofiMode>() -> c::rofi_mode {
         mc._get_display_value = Some(_get_display_value::<T>);
         mc._result = Some(_result::<T>);
         mc._token_match = Some(_token_match::<T>);
+        mc._get_icon = Some(_get_icon::<T>);
         mc.type_ = T::TYPE as u32;
 
         mc

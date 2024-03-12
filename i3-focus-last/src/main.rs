@@ -3,7 +3,6 @@ use gumdrop::Options;
 use std::collections::HashMap;
 use std::env;
 use std::error::Error;
-use std::fs;
 use std::io;
 use std::io::Write;
 use std::process::{Command, Stdio};
@@ -87,36 +86,8 @@ fn choose_with_menu(
     Ok(s.parse()?)
 }
 
-static DEFAULT_ICONS: &[(&str, &str)] = &[("Chromium", "chromium")];
-
-fn read_icons_map(icons_map: &str) -> HashMap<String, String> {
-    let mut m = HashMap::new();
-
-    for (c, i) in DEFAULT_ICONS {
-        m.insert((*c).to_string(), (*i).to_string());
-    }
-
-    let r = || -> Result<(), Box<dyn Error>> {
-        let icons_map = icons_map.replace('~', &env::var("HOME")?);
-
-        let f = fs::File::open(icons_map)?;
-        let mn: HashMap<String, String> = serde_json::from_reader(f)?;
-
-        for (k, v) in mn {
-            m.insert(k, v);
-        }
-        Ok(())
-    }();
-
-    if let Err(e) = r {
-        println!("Could not read icons map: {}", e);
-    }
-
-    m
-}
-
 fn focus_menu(menu_opts: MenuOpts) -> Result<(), Box<dyn Error + Send + Sync>> {
-    let icons_map = read_icons_map(&menu_opts.icons_map);
+    let icons_map = utils::read_icons_map(Some(&menu_opts.icons_map));
 
     let mut conn = swayipc::Connection::new()?;
 

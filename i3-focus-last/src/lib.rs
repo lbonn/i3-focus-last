@@ -36,6 +36,40 @@ fn extract_windows(root: &swayipc::Node) -> HashMap<i64, &swayipc::Node> {
 
 pub mod utils {
     use std::collections::HashMap;
+    use std::env;
+    use std::error::Error;
+    use std::fs;
+
+    pub type IconsMap = HashMap<String, String>;
+
+    static DEFAULT_ICONS: &[(&str, &str)] = &[("Chromium", "chromium")];
+
+    pub fn read_icons_map(icons_map: Option<&str>) -> IconsMap {
+        let icons_map = icons_map.unwrap_or("~/.config/i3-focus-last/icons.json");
+        let mut m = HashMap::new();
+
+        for (c, i) in DEFAULT_ICONS {
+            m.insert((*c).to_string(), (*i).to_string());
+        }
+
+        let r = || -> Result<(), Box<dyn Error>> {
+            let icons_map = icons_map.replace('~', &env::var("HOME")?);
+
+            let f = fs::File::open(icons_map)?;
+            let mn: HashMap<String, String> = serde_json::from_reader(f)?;
+
+            for (k, v) in mn {
+                m.insert(k, v);
+            }
+            Ok(())
+        }();
+
+        if let Err(e) = r {
+            println!("Could not read icons map: {}", e);
+        }
+
+        m
+    }
 
     /// Returns the app_id or class of a node
     pub fn node_display_id(node: &swayipc::Node) -> Option<String> {
@@ -45,6 +79,24 @@ pub mod utils {
             if let Some(c) = &props.class {
                 return Some(c.to_string());
             }
+        }
+
+        None
+    }
+
+    /// Returns the icon name for a given node, including conversion
+    /// with supplied icons map
+    pub fn node_icon_name(
+        node: &swayipc::Node,
+        icons_map: &HashMap<String, String>,
+    ) -> Option<String> {
+        if let Some(disp_id) = node_display_id(node).as_ref() {
+            if let Some(icon) = icons_map.get(disp_id) {
+                if !icon.is_empty() {
+                    return Some(icon.clone());
+                }
+            }
+            return Some(disp_id.clone());
         }
 
         None
@@ -77,14 +129,8 @@ pub mod utils {
 
         let mut plus = "".to_string();
         if let Some(icons_map) = icons_map.as_ref() {
-            if let Some(disp_id) = disp_id.as_ref() {
-                if let Some(icon) = icons_map.get(disp_id) {
-                    if !icon.is_empty() {
-                        plus = format!("\0icon\x1f{}", icon);
-                    }
-                } else {
-                    plus = format!("\0icon\x1f{}", disp_id);
-                }
+            if let Some(icon_name) = node_icon_name(node, icons_map) {
+                plus = format!("\0icon\x1f{}", icon_name);
             }
         }
 

@@ -1,9 +1,9 @@
 pub mod rofi;
 
-use std::ffi::CStr;
-
+use std::collections::HashMap;
 use std::sync::Mutex;
 
+use std::ffi::CStr;
 use std::os::raw::c_char;
 
 use i3_focus_last::get_windows_by_history;
@@ -18,6 +18,7 @@ extern crate byte_strings;
 struct Mode {
     pub conn: Mutex<swayipc::Connection>,
     pub windows: Vec<swayipc::Node>,
+    pub icons_map: HashMap<String, String>,
 }
 
 impl RofiMode for Mode {
@@ -29,10 +30,12 @@ impl RofiMode for Mode {
     fn init() -> Result<Self, ()> {
         let mut conn = swayipc::Connection::new().map_err(|_| ())?;
         let windows = get_windows_by_history(&mut conn).map_err(|_| ())?;
+        let icons_map = utils::read_icons_map(None);
 
         Ok(Mode {
             conn: Mutex::new(conn),
             windows,
+            icons_map,
         })
     }
 
@@ -83,6 +86,12 @@ impl RofiMode for Mode {
             }
         }
         true
+    }
+
+    fn icon_query(&self, selected_line: usize) -> Option<String> {
+        assert!(selected_line < self.windows.len());
+        let win = &self.windows[selected_line];
+        utils::node_icon_name(win, &self.icons_map)
     }
 }
 
