@@ -145,7 +145,7 @@ pub mod helpers {
             let mself: *mut Pattern = &mut (std::mem::transmute(*pattern));
             let mut ftokens: [*mut c::rofi_int_matcher; 2] = [mself, ptr::null_mut()];
             let ctoken = CString::new(token).unwrap();
-            c::helper_token_match(ftokens.as_mut_ptr(), ctoken.into_raw()) != 0
+            c::helper_token_match(ftokens.as_mut_ptr(), ctoken.as_ptr()) != 0
         }
     }
 
@@ -158,7 +158,7 @@ pub mod helpers {
             ftokens.push(ptr::null_mut());
 
             let ctoken = CString::new(token).unwrap();
-            c::helper_token_match(ftokens.as_mut_ptr(), ctoken.into_raw()) != 0
+            c::helper_token_match(ftokens.as_mut_ptr(), ctoken.as_ptr()) != 0
         }
     }
 
