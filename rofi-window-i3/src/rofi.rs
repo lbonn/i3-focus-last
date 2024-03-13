@@ -115,7 +115,7 @@ pub mod helpers {
     pub fn find_arg_bool(name: &str) -> bool {
         unsafe {
             let name = CString::new(name).unwrap();
-            c::find_arg(name.as_ptr()) != 0
+            c::find_arg(name.as_ptr()) != -1
         }
     }
 

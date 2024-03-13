@@ -29,7 +29,7 @@ impl RofiMode for Mode {
     const NAME_KEY: &'static [c_char; 128] = rofi_name_key!(b"display-windowi3");
 
     fn init() -> Result<Self, Box<dyn Error + Send + Sync>> {
-        let sort_style = if find_arg_bool("window-focused-first") {
+        let sort_style = if find_arg_bool("-window-focused-first") {
             WindowsSortStyle::CurrentFirst
         } else {
             WindowsSortStyle::CurrentLast
