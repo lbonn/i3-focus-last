@@ -2,9 +2,9 @@ use std::collections::VecDeque;
 use std::error::Error;
 use std::fs;
 use std::net::Shutdown;
-use std::os::unix::net::UnixListener;
+use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 
 use serde::de::Deserialize;
@@ -43,7 +43,10 @@ fn focus_nth(windows: &VecDeque<i64>, n: usize) -> Result<(), Box<dyn Error>> {
     Err(From::from(format!("Last {}nth window unavailable", n)))
 }
 
-fn cmd_server(windows: Arc<Mutex<VecDeque<i64>>>) -> Result<(), Box<dyn Error + Send + Sync>> {
+fn cmd_server(
+    exit: mpsc::Receiver<()>,
+    windows: Arc<Mutex<VecDeque<i64>>>,
+) -> Result<(), Box<dyn Error + Send + Sync>> {
     let socket = socket_filename()?;
     let socket = Path::new(&socket);
 
@@ -51,11 +54,29 @@ fn cmd_server(windows: Arc<Mutex<VecDeque<i64>>>) -> Result<(), Box<dyn Error + 
         fs::remove_file(socket)?;
     }
 
-    // Listen to client commands
-    let listener = UnixListener::bind(socket)?;
+    // zip exit and stream messages (client commands) into one channel
+    let (stream_tx, stream_rx) = mpsc::channel::<Option<UnixStream>>();
 
-    for stream in listener.incoming().flatten() {
+    let stream_tx_ex = stream_tx.clone();
+    thread::spawn(move || {
+        exit.recv().ok();
+        stream_tx_ex.send(None).ok();
+    });
+
+    let listener = UnixListener::bind(socket)?;
+    thread::spawn(move || {
+        for stream in listener.incoming().flatten() {
+            stream_tx.send(Some(stream)).ok();
+        }
+    });
+
+    while let Ok(stream) = stream_rx.recv() {
         let winc = Arc::clone(&windows);
+        if stream.is_none() {
+            // we got an exit cmd
+            break;
+        }
+        let stream = stream.unwrap();
 
         thread::spawn(move || {
             let mut de = serde_json::Deserializer::from_reader(&stream);
@@ -101,7 +122,8 @@ pub fn focus_server() -> Result<(), Box<dyn Error + Send + Sync>> {
     // Listens to i3 event
     let events = conn.subscribe([EventType::Window])?;
 
-    let server_handle = thread::spawn(|| cmd_server(windowsc));
+    let (server_exit_tx, server_exit_rx) = mpsc::channel::<()>();
+    let server_handle = thread::spawn(move || cmd_server(server_exit_rx, windowsc));
 
     for event in events {
         if let Err(_e) = event {
@@ -131,6 +153,7 @@ pub fn focus_server() -> Result<(), Box<dyn Error + Send + Sync>> {
         }
     }
 
+    server_exit_tx.send(()).ok();
     server_handle.join().unwrap()?;
 
     Ok(())
