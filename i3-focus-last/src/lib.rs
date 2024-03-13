@@ -161,12 +161,19 @@ pub mod utils {
     }
 }
 
+#[derive(PartialEq, Eq)]
+pub enum WindowsSortStyle {
+    CurrentLast,
+    CurrentFirst,
+}
+
 /// Returns the list of current windows in most-recently-used order
 ///
 /// It will try to connect to the i3-focus-last server if available and will
 /// default to the order returned by the WM otherwise.
 pub fn get_windows_by_history(
     conn: &mut swayipc::Connection,
+    sort_style: WindowsSortStyle,
 ) -> Result<Vec<swayipc::Node>, Box<dyn Error + Send + Sync>> {
     let t = conn.get_tree()?;
     let ws = extract_windows(&t);
@@ -181,7 +188,7 @@ pub fn get_windows_by_history(
 
     let mut ordered_windows: Vec<swayipc::Node> = vec![];
     let mut removed = HashSet::new();
-    if !hist.is_empty() {
+    if sort_style == WindowsSortStyle::CurrentLast && !hist.is_empty() {
         hist.remove(0);
     }
     for i in hist {

@@ -7,10 +7,10 @@ use std::sync::Mutex;
 use std::ffi::CStr;
 use std::os::raw::c_char;
 
-use i3_focus_last::get_windows_by_history;
 use i3_focus_last::utils;
+use i3_focus_last::{get_windows_by_history, WindowsSortStyle};
 
-use rofi::helpers::{rofi_view_hide, token_match_patterns};
+use rofi::helpers::{find_arg_bool, rofi_view_hide, token_match_patterns};
 use rofi::{CRofiMode, EntryStateFlags, MenuReturn, ModeMode, ModeType, Pattern, RofiMode};
 
 #[macro_use]
@@ -29,8 +29,14 @@ impl RofiMode for Mode {
     const NAME_KEY: &'static [c_char; 128] = rofi_name_key!(b"display-windowi3");
 
     fn init() -> Result<Self, Box<dyn Error + Send + Sync>> {
+        let sort_style = if find_arg_bool("window-focused-first") {
+            WindowsSortStyle::CurrentFirst
+        } else {
+            WindowsSortStyle::CurrentLast
+        };
+
         let mut conn = swayipc::Connection::new()?;
-        let windows = get_windows_by_history(&mut conn)?;
+        let windows = get_windows_by_history(&mut conn, sort_style)?;
         let icons_map = utils::read_icons_map(None);
 
         Ok(Mode {

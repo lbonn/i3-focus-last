@@ -9,7 +9,9 @@ use std::process::{Command, Stdio};
 use std::str::from_utf8;
 
 use i3_focus_last::utils;
-use i3_focus_last::{focus_nth_last_client, focus_server, get_windows_by_history, ServerOpts};
+use i3_focus_last::{
+    focus_nth_last_client, focus_server, get_windows_by_history, ServerOpts, WindowsSortStyle,
+};
 
 #[derive(Debug, Options)]
 pub struct MenuOpts {
@@ -91,7 +93,7 @@ fn focus_menu(menu_opts: MenuOpts) -> Result<(), Box<dyn Error + Send + Sync>> {
 
     let mut conn = swayipc::Connection::new()?;
 
-    let ordered_windows = crate::get_windows_by_history(&mut conn)?;
+    let ordered_windows = get_windows_by_history(&mut conn, WindowsSortStyle::CurrentLast)?;
 
     let choice = choose_with_menu(&menu_opts.menu, &icons_map, &ordered_windows)?;
     let wid = ordered_windows[choice].id;
