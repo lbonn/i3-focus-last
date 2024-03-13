@@ -1,10 +1,12 @@
-use bitflags::bitflags;
 use std::alloc::{dealloc, Layout};
 use std::collections::HashMap;
+use std::error::Error;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_uint, c_void};
 use std::ptr;
 use std::sync::Mutex;
+
+use bitflags::bitflags;
 
 mod c {
     #![allow(non_camel_case_types)]
@@ -176,7 +178,7 @@ pub trait RofiMode: Sized {
     const NAME_KEY: &'static [c_char; 128];
     const TYPE: ModeType;
 
-    fn init() -> Result<Self, ()>;
+    fn init() -> Result<Self, Box<dyn Error + Send + Sync>>;
     fn get_num_entries(&self) -> usize;
     // TODO: pango attributes
     fn get_display_value(&self, selected_line: usize) -> Option<(String, EntryStateFlags)>;
@@ -200,7 +202,7 @@ struct ModeData<T: RofiMode> {
 }
 
 impl<T: RofiMode> ModeData<T> {
-    fn init() -> Result<Self, ()> {
+    fn init() -> Result<Self, Box<dyn Error + Send + Sync>> {
         let mode = T::init()?;
         let icon_cache = Mutex::new(HashMap::new());
         Ok(ModeData { mode, icon_cache })
@@ -221,7 +223,10 @@ unsafe extern "C" fn _init<T: RofiMode>(mc: *mut c::rofi_mode) -> c_int {
             (*mc).private_data = Box::into_raw(Box::new(d)) as *mut c_void;
             1
         }
-        Err(_) => 0,
+        Err(e) => {
+            eprintln!("error: {}", e);
+            0
+        }
     }
 }
 
@@ -323,10 +328,7 @@ unsafe extern "C" fn _get_icon<T: RofiMode>(
         .icon_query(selected_line as usize)
         .map(|v| CString::new(v).unwrap())
     {
-        let uid = c::rofi_icon_fetcher_query(
-            query.as_ptr() as *const i8,
-            height as ::std::os::raw::c_int,
-        );
+        let uid = c::rofi_icon_fetcher_query(query.as_ptr(), height as ::std::os::raw::c_int);
 
         icon_cache.insert(entry, uid);
         icon_uid = Some(uid);

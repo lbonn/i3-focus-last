@@ -1,6 +1,7 @@
 pub mod rofi;
 
 use std::collections::HashMap;
+use std::error::Error;
 use std::sync::Mutex;
 
 use std::ffi::CStr;
@@ -27,9 +28,9 @@ impl RofiMode for Mode {
     const TYPE: ModeType = ModeType::Switcher;
     const NAME_KEY: &'static [c_char; 128] = rofi_name_key!(b"display-windowi3");
 
-    fn init() -> Result<Self, ()> {
-        let mut conn = swayipc::Connection::new().map_err(|_| ())?;
-        let windows = get_windows_by_history(&mut conn).map_err(|_| ())?;
+    fn init() -> Result<Self, Box<dyn Error + Send + Sync>> {
+        let mut conn = swayipc::Connection::new()?;
+        let windows = get_windows_by_history(&mut conn)?;
         let icons_map = utils::read_icons_map(None);
 
         Ok(Mode {
