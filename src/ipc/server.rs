@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 use std::error::Error;
 use std::fs;
+use std::io::Write;
 use std::net::Shutdown;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
@@ -22,7 +23,7 @@ static BUFFER_SIZE: usize = 100;
 #[derive(Debug, Options)]
 pub struct ServerOpts {}
 
-fn focus_nth(windows: &VecDeque<i64>, n: usize) -> Result<(), Box<dyn Error>> {
+fn focus_nth(windows: &Vec<i64>, n: usize) -> Result<(), Box<dyn Error>> {
     let mut conn = Connection::new()?;
     let mut k = n;
 
@@ -71,12 +72,12 @@ fn cmd_server(
     });
 
     while let Ok(stream) = stream_rx.recv() {
-        let winc = Arc::clone(&windows);
+        let windows = Arc::clone(&windows);
         if stream.is_none() {
             // we got an exit cmd
             break;
         }
-        let stream = stream.unwrap();
+        let mut stream = stream.unwrap();
 
         thread::spawn(move || {
             let mut de = serde_json::Deserializer::from_reader(&stream);
@@ -84,14 +85,18 @@ fn cmd_server(
 
             match cmd {
                 Ok(Cmd::SwitchTo(n)) => {
-                    let winc = winc.lock().unwrap();
+                    // work on a copy to only keep the lock as needed
+                    let windows = Vec::from_iter((*windows.lock().unwrap()).iter().cloned());
 
                     // This can fail, that's fine
-                    focus_nth(&winc, n).ok();
+                    focus_nth(&windows, n).ok();
                 }
                 Ok(Cmd::GetHistory) => {
-                    let winc = winc.lock().unwrap();
-                    let _ = serde_json::to_writer(&stream, &*winc);
+                    let v = {
+                        let windows = windows.lock().unwrap();
+                        serde_json::to_vec(&*windows).unwrap()
+                    };
+                    let _ = &stream.write(&v);
                 }
                 _ => {
                     let _ = serde_json::to_writer(&stream, "invalid command");
