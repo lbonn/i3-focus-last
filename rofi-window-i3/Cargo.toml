@@ -8,7 +8,7 @@ name = "rofi_window_i3"
 crate-type = ["cdylib"]
 
 [dependencies]
-i3-focus-last = { path = "../i3-focus-last" }
+i3-focus-last = { path = ".." }
 bitflags = "2.4"
 byte-strings = "0.3"
 swayipc = "3.0.0"

@@ -1,10 +1,19 @@
-[workspace]
-members = [
-    "i3-focus-last",
-    "rofi-window-i3",
-]
-resolver = "2"
+[package]
+name = "i3-focus-last"
+version = "0.5.4"
+authors = ["lbonn"]
+description = "Focus last window on i3"
+license = "MIT"
+repository = "https://github.com/lbonn/i3-focus-last"
+edition = "2021"
 
-default-members = [
-    "i3-focus-last",
-]
+[dependencies]
+gumdrop = "0.8"
+serde = "1.0"
+serde_derive = "1.0"
+serde_json = "1.0"
+swayipc = "3"
+
+[workspace]
+members = [ ".", "rofi-window-i3" ]
+resolver = "2"
