@@ -116,7 +116,7 @@ pub fn focus_server() -> Result<(), Box<dyn Error + Send + Sync>> {
     let windowsc = Arc::clone(&windows);
 
     // Add the current focused window to bootstrap the list
-    utils::get_focused_window(&mut conn)
+    utils::get_focused_window(&conn.get_tree()?)
         .map(|wid| {
             let mut windows = windows.lock().unwrap();
 

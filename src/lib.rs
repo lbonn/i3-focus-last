@@ -149,13 +149,13 @@ pub mod utils {
     }
 
     pub fn get_focused_window(
-        conn: &mut swayipc::Connection,
+        root: &swayipc::Node,
     ) -> Result<i64, Box<dyn Error + Send + Sync>> {
-        let mut node = conn.get_tree()?;
+        let mut node = root;
 
         while !node.focused {
-            let fid = node.focus.into_iter().next().ok_or("")?;
-            node = node.nodes.into_iter().find(|n| n.id == fid).ok_or("")?;
+            let fid = *(node.focus.iter().next().ok_or("")?);
+            node = node.nodes.iter().find(|n| n.id == fid).ok_or("")?;
         }
         Ok(node.id)
     }
