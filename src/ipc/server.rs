@@ -23,7 +23,7 @@ static BUFFER_SIZE: usize = 100;
 #[derive(Debug, Options)]
 pub struct ServerOpts {}
 
-fn focus_nth(windows: &Vec<i64>, n: usize) -> Result<(), Box<dyn Error>> {
+fn focus_nth(windows: &[i64], n: usize) -> Result<(), Box<dyn Error>> {
     let mut conn = Connection::new()?;
     let mut k = n;
 
@@ -93,8 +93,8 @@ fn cmd_server(
                 }
                 Ok(Cmd::GetHistory) => {
                     let v = {
-                        let windows = windows.lock().unwrap();
-                        serde_json::to_vec(&*windows).unwrap()
+                        let windows = Vec::from_iter((*windows.lock().unwrap()).iter().cloned());
+                        serde_json::to_vec::<Vec<_>>(&windows).unwrap()
                     };
                     let _ = &stream.write(&v);
                 }
