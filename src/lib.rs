@@ -148,13 +148,11 @@ pub mod utils {
         )
     }
 
-    pub fn get_focused_window(
-        root: &swayipc::Node,
-    ) -> Result<i64, Box<dyn Error + Send + Sync>> {
+    pub fn get_focused_window(root: &swayipc::Node) -> Result<i64, Box<dyn Error + Send + Sync>> {
         let mut node = root;
 
         while !node.focused {
-            let fid = *(node.focus.iter().next().ok_or("")?);
+            let fid = *(node.focus.first().ok_or("")?);
             node = node.nodes.iter().find(|n| n.id == fid).ok_or("")?;
         }
         Ok(node.id)
@@ -178,7 +176,7 @@ pub fn get_windows_by_history(
     let t = conn.get_tree()?;
     let ws = extract_windows(&t);
 
-    let mut hist = get_focus_history().unwrap_or_else(|e| {
+    let hist = get_focus_history().unwrap_or_else(|e| {
         eprintln!(
             "warning: could not get focus history: \"{}\", order will be arbitrary",
             e
@@ -188,11 +186,9 @@ pub fn get_windows_by_history(
 
     let mut ordered_windows: Vec<swayipc::Node> = vec![];
     let mut removed = HashSet::new();
-    if sort_style == WindowsSortStyle::CurrentLast && !hist.is_empty() {
-        hist.remove(0);
-    }
-    for i in hist {
-        if let Some(n) = ws.get(&i) {
+
+    for i in hist.iter() {
+        if let Some(n) = ws.get(i) {
             ordered_windows.push((*n).clone());
             removed.insert(i);
         }
@@ -201,6 +197,10 @@ pub fn get_windows_by_history(
         if !removed.contains(&i) {
             ordered_windows.push(w.clone());
         }
+    }
+
+    if sort_style == WindowsSortStyle::CurrentLast && !hist.is_empty() {
+        ordered_windows.rotate_left(1);
     }
 
     Ok(ordered_windows)
