@@ -1,8 +1,8 @@
 pub mod rofi;
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::error::Error;
-use std::sync::Mutex;
 
 use std::ffi::CStr;
 use std::os::raw::c_char;
@@ -17,7 +17,7 @@ use rofi::{CRofiMode, EntryStateFlags, MenuReturn, ModeMode, ModeType, Pattern, 
 extern crate byte_strings;
 
 struct Mode {
-    pub conn: Mutex<swayipc::Connection>,
+    pub conn: RefCell<swayipc::Connection>,
     pub windows: Vec<swayipc::Node>,
     pub icons_map: HashMap<String, String>,
 }
@@ -40,7 +40,7 @@ impl RofiMode for Mode {
         let icons_map = utils::read_icons_map(None);
 
         Ok(Mode {
-            conn: Mutex::new(conn),
+            conn: RefCell::new(conn),
             windows,
             icons_map,
         })
@@ -71,8 +71,7 @@ impl RofiMode for Mode {
 
             let win = &self.windows[selected_line];
             self.conn
-                .lock()
-                .unwrap()
+                .borrow_mut()
                 .run_command(format!("[con_id={}] focus", win.id).as_str())
                 .unwrap();
         }

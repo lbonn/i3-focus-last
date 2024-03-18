@@ -1,10 +1,10 @@
 use std::alloc::{dealloc, Layout};
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::error::Error;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_uint, c_void};
 use std::ptr;
-use std::sync::Mutex;
 
 use bitflags::bitflags;
 
@@ -198,13 +198,13 @@ type IconCache = HashMap<IconCacheEntry, c_uint>;
 
 struct ModeData<T: RofiMode> {
     mode: T,
-    icon_cache: Mutex<IconCache>,
+    icon_cache: RefCell<IconCache>,
 }
 
 impl<T: RofiMode> ModeData<T> {
     fn init() -> Result<Self, Box<dyn Error + Send + Sync>> {
         let mode = T::init()?;
-        let icon_cache = Mutex::new(HashMap::new());
+        let icon_cache = RefCell::new(HashMap::new());
         Ok(ModeData { mode, icon_cache })
     }
 }
@@ -315,10 +315,7 @@ unsafe extern "C" fn _get_icon<T: RofiMode>(
         scale: 1, // TODO: handle this "cleanly"
     };
 
-    // it's not a problem to keep this lock open for a while
-    // as _get_icon calls (like all the mode api) are never
-    // called in parallel
-    let mut icon_cache = m.icon_cache.lock().unwrap();
+    let mut icon_cache = m.icon_cache.borrow_mut();
 
     let mut icon_uid = None;
     if let Some(uid) = icon_cache.get(&entry) {
