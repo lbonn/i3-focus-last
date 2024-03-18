@@ -23,7 +23,11 @@ static BUFFER_SIZE: usize = 100;
 #[derive(Debug, Options)]
 pub struct ServerOpts {}
 
-fn focus_nth<'a, I>(windows: I, n: usize) -> Result<(), Box<dyn Error>>
+fn focus_nth<'a, I>(
+    conn: &mut swayipc::Connection,
+    windows: I,
+    n: usize,
+) -> Result<(), Box<dyn Error>>
 where
     I: IntoIterator<Item = &'a i64>,
 {
@@ -34,7 +38,6 @@ where
             continue;
         }
 
-        let mut conn = swayipc::Connection::new()?;
         let r = conn.run_command(format!("[con_id={}] focus", wid).as_str())?;
 
         if let Some(o) = r.first() {
@@ -104,9 +107,9 @@ fn cmd_listener(event_chan: mpsc::Sender<ServerEvent>) -> Result<(), Box<dyn Err
 
 /// Run the focus server that answers clients using the IPC
 fn i3events_listener(
-    conn: swayipc::Connection,
     event_chan: mpsc::Sender<ServerEvent>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
+    let conn = swayipc::Connection::new()?;
     // Listens to i3 event
     let events = conn.subscribe([swayipc::EventType::Window])?;
 
@@ -149,19 +152,11 @@ where
 
 pub fn focus_server() -> Result<(), Box<dyn Error + Send + Sync>> {
     let (events_tx, events_rx) = mpsc::channel::<ServerEvent>();
-    let mut conn = swayipc::Connection::new()?;
-
-    let mut windows = VecDeque::new();
-    utils::get_focused_window(&conn.get_tree()?)
-        .map(|wid| {
-            windows.push_front(wid);
-        })
-        .ok();
 
     // i3 events
     {
         let events_tx = events_tx.clone();
-        spawn_fallible(move |evtx| i3events_listener(conn, evtx), events_tx);
+        spawn_fallible(i3events_listener, events_tx);
     }
 
     // commands
@@ -175,6 +170,14 @@ pub fn focus_server() -> Result<(), Box<dyn Error + Send + Sync>> {
         let events_tx = events_tx.clone();
         spawn_fallible(interrupt_listener, events_tx);
     }
+
+    let mut conn = swayipc::Connection::new()?;
+    let mut windows = VecDeque::new();
+    utils::get_focused_window(&conn.get_tree()?)
+        .map(|wid| {
+            windows.push_front(wid);
+        })
+        .ok();
 
     for ev in events_rx {
         match ev {
@@ -200,7 +203,9 @@ pub fn focus_server() -> Result<(), Box<dyn Error + Send + Sync>> {
                 }
             }
             ServerEvent::SwitchTo(n) => {
-                focus_nth(&windows, n).map_err(|e| eprintln!("{}", e)).ok();
+                focus_nth(&mut conn, &windows, n)
+                    .map_err(|e| eprintln!("{}", e))
+                    .ok();
             }
             ServerEvent::GetHistory(chan) => {
                 let windows = Vec::from_iter(windows.iter().cloned());
