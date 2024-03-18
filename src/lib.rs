@@ -65,7 +65,7 @@ pub mod utils {
         }();
 
         if let Err(e) = r {
-            println!("Could not read icons map: {}", e);
+            eprintln!("Could not read icons map: {}", e);
         }
 
         m

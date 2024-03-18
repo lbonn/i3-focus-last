@@ -94,7 +94,7 @@ fn cmd_listener(event_chan: mpsc::Sender<ServerEvent>) -> Result<(), Box<dyn Err
             let _ = stream.shutdown(Shutdown::Both);
 
             if let Err(err) = res {
-                println!("{}", err);
+                eprintln!("error: {}", err);
             }
         });
     }
@@ -200,7 +200,7 @@ pub fn focus_server() -> Result<(), Box<dyn Error + Send + Sync>> {
                 }
             }
             ServerEvent::SwitchTo(n) => {
-                focus_nth(&windows, n).map_err(|e| println!("{}", e)).ok();
+                focus_nth(&windows, n).map_err(|e| eprintln!("{}", e)).ok();
             }
             ServerEvent::GetHistory(chan) => {
                 let windows = Vec::from_iter(windows.iter().cloned());
