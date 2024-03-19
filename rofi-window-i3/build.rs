@@ -12,6 +12,7 @@ fn main() {
         .atleast_version("1.16")
         .probe("cairo")
         .unwrap();
+    let rofi = pkg_config::Config::new().probe("rofi").unwrap();
 
     let bindings = bindgen::Builder::default()
         .clang_args(
@@ -22,6 +23,11 @@ fn main() {
         .clang_args(
             cairo
                 .include_paths
+                .iter()
+                .map(|path| format!("-I{}", path.to_string_lossy())),
+        )
+        .clang_args(
+            rofi.include_paths
                 .iter()
                 .map(|path| format!("-I{}", path.to_string_lossy())),
         )
