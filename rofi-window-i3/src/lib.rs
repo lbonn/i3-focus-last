@@ -10,7 +10,7 @@ use std::os::raw::c_char;
 use i3_focus_last::utils;
 use i3_focus_last::{get_windows_by_history, WindowsSortStyle};
 
-use rofi::helpers::{find_arg_bool, rofi_view_hide, token_match_patterns};
+use rofi::helpers::{find_arg_bool, rofi_view_hide, token_match_pattern};
 use rofi::{CRofiMode, EntryStateFlags, MenuReturn, ModeMode, ModeType, Pattern, RofiMode};
 
 #[macro_use]
@@ -84,13 +84,23 @@ impl RofiMode for Mode {
 
         let win = &self.windows[selected_line];
 
-        // TODO check other fields (appid) if requested
+        for pat in patterns {
+            let mut m = false;
 
-        if let Some(name) = win.name.as_ref() {
-            if !token_match_patterns(patterns, name) {
+            if let Some(name) = win.name.as_ref() {
+                m = token_match_pattern(pat, name);
+            }
+            if m == (pat.invert != 0) {
+                if let Some(appid) = win.app_id.as_ref() {
+                    m = token_match_pattern(pat, appid);
+                }
+            }
+
+            if !m {
                 return false;
             }
         }
+
         true
     }
 

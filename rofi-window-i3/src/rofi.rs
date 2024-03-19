@@ -108,7 +108,6 @@ impl<'a> ToRofiStr<'a> for &'a CStr {
 
 /// API that can be called from rust modes
 pub mod helpers {
-    use crate::rofi::c;
     use crate::rofi::*;
 
     pub fn find_arg_bool(name: &str) -> bool {

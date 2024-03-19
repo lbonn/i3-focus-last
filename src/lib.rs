@@ -128,10 +128,8 @@ pub mod utils {
         let disp_id = node_display_id(node);
 
         let mut plus = "".to_string();
-        if let Some(icons_map) = icons_map.as_ref() {
-            if let Some(icon_name) = node_icon_name(node, icons_map) {
-                plus = format!("\0icon\x1f{}", icon_name);
-            }
+        if let Some(icon_name) = icons_map.and_then(|icons_map| node_icon_name(node, icons_map)) {
+            plus = format!("\0icon\x1f{}", icon_name);
         }
 
         let mut name = "".to_string();
