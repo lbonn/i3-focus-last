@@ -79,7 +79,7 @@ impl RofiMode for Mode {
         Some(ModeMode::Exit)
     }
 
-    fn token_match(&self, patterns: Vec<&Pattern>, selected_line: usize) -> bool {
+    fn token_match(&self, patterns: &[Pattern], selected_line: usize) -> bool {
         assert!(selected_line < self.windows.len());
 
         let win = &self.windows[selected_line];
@@ -87,7 +87,7 @@ impl RofiMode for Mode {
         // TODO check other fields (appid) if requested
 
         if let Some(name) = win.name.as_ref() {
-            if !token_match_patterns(&patterns, name) {
+            if !token_match_patterns(patterns, name) {
                 return false;
             }
         }

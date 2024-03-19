@@ -77,10 +77,9 @@ macro_rules! rofi_name_key {
         $single:expr $(,)?
     ) => {
         unsafe {
-            &*std::mem::transmute::<_, &[c_char; 128]>(const_concat_bytes!(
-                $single,
-                &[0u8; 128 - $single.len()]
-            ))
+            #[allow(clippy::transmute_ptr_to_ref)]
+            &*(const_concat_bytes!($single, &[0u8; 128 - $single.len()]) as *const [u8; 128]
+                as *const [i8; 128])
         }
     };
 }
@@ -144,18 +143,19 @@ pub mod helpers {
     pub fn token_match_pattern(pattern: &Pattern, token: &str) -> bool {
         unsafe {
             // :)
-            let mself: *mut Pattern = &mut (std::mem::transmute(*pattern));
-            let mut ftokens: [*mut c::rofi_int_matcher; 2] = [mself, ptr::null_mut()];
+            let mut mself = *pattern;
+            let mut ftokens: [*mut c::rofi_int_matcher; 2] = [&mut mself, ptr::null_mut()];
             let ctoken = CString::new(token).unwrap();
             c::helper_token_match(ftokens.as_mut_ptr(), ctoken.as_ptr()) != 0
         }
     }
 
-    pub fn token_match_patterns(patterns: &Vec<&Pattern>, token: &str) -> bool {
-        let mut ftokens: Vec<*mut Pattern> = vec![];
+    pub fn token_match_patterns(patterns: &[Pattern], token: &str) -> bool {
+        let mut patterns: Vec<Pattern> = patterns.to_vec();
         unsafe {
-            for p in patterns {
-                ftokens.push(&mut (std::mem::transmute(**p)));
+            let mut ftokens: Vec<*mut Pattern> = vec![];
+            for p in patterns.iter_mut() {
+                ftokens.push(&mut *p);
             }
             ftokens.push(ptr::null_mut());
 
@@ -183,7 +183,7 @@ pub trait RofiMode: Sized {
     // TODO: pango attributes
     fn get_display_value(&self, selected_line: usize) -> Option<(String, EntryStateFlags)>;
     fn result(&self, mretv: MenuReturn, selected_line: usize) -> Option<ModeMode>;
-    fn token_match(&self, patterns: Vec<&Pattern>, selected_line: usize) -> bool;
+    fn token_match(&self, patterns: &[Pattern], selected_line: usize) -> bool;
     fn icon_query(&self, selected_line: usize) -> Option<String>;
 }
 
@@ -291,15 +291,16 @@ unsafe extern "C" fn _token_match<T: RofiMode>(
     tokens: *mut *mut c::rofi_int_matcher,
     selected_line: c_uint,
 ) -> c_int {
-    let mut tokenv: Vec<&Pattern> = vec![];
+    let mut tokenv: Vec<Pattern> = vec![];
     let mut t = tokens;
     while !(*t).is_null() {
-        tokenv.push(&**t);
+        tokenv.push(**t);
         t = t.add(1);
     }
 
     let m = (*mc).get::<T>();
-    m.mode.token_match(tokenv, selected_line as usize) as c_int
+    m.mode
+        .token_match(tokenv.as_slice(), selected_line as usize) as c_int
 }
 
 unsafe extern "C" fn _get_icon<T: RofiMode>(
