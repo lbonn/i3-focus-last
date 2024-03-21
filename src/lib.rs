@@ -174,12 +174,12 @@ pub fn get_windows_by_history(
     let t = conn.get_tree()?;
     let ws = extract_windows(&t);
 
-    let hist = get_focus_history().unwrap_or_else(|e| {
+    let (hist, empty_focus) = get_focus_history().unwrap_or_else(|e| {
         eprintln!(
             "warning: could not get focus history: \"{}\", order will be arbitrary",
             e
         );
-        vec![]
+        (vec![], false)
     });
 
     let mut ordered_windows: Vec<swayipc::Node> = vec![];
@@ -197,8 +197,12 @@ pub fn get_windows_by_history(
         }
     }
 
-    if sort_style == WindowsSortStyle::CurrentLast && !hist.is_empty() {
-        ordered_windows.rotate_left(1);
+    if !hist.is_empty() {
+        if sort_style == WindowsSortStyle::CurrentLast && !empty_focus {
+            ordered_windows.rotate_left(1);
+        } else if sort_style == WindowsSortStyle::CurrentFirst && empty_focus {
+            ordered_windows.rotate_right(1);
+        }
     }
 
     Ok(ordered_windows)

@@ -54,7 +54,7 @@ where
 enum ServerEvent {
     I3Event(swayipc::Event),
     SwitchTo(usize),
-    GetHistory(mpsc::Sender<Vec<i64>>),
+    GetHistory(mpsc::Sender<(Vec<i64>, bool)>),
     Stop(Result<(), Box<dyn Error + Send + Sync>>),
 }
 
@@ -81,10 +81,10 @@ fn cmd_listener(event_chan: mpsc::Sender<ServerEvent>) -> Result<(), Box<dyn Err
                         event_chan.send(ServerEvent::SwitchTo(n))?;
                     }
                     Ok(Cmd::GetHistory) => {
-                        let (hist_tx, hist_rx) = mpsc::channel::<Vec<i64>>();
+                        let (hist_tx, hist_rx) = mpsc::channel::<(Vec<i64>, bool)>();
                         event_chan.send(ServerEvent::GetHistory(hist_tx))?;
-                        let windows = hist_rx.recv().unwrap();
-                        let v = serde_json::to_vec::<Vec<_>>(&windows).unwrap();
+                        let res = hist_rx.recv().unwrap();
+                        let v = serde_json::to_vec::<(Vec<_>, bool)>(&res).unwrap();
                         let _ = &stream.write(&v);
                     }
                     _ => {
@@ -111,7 +111,7 @@ fn i3events_listener(
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     let conn = swayipc::Connection::new()?;
     // Listens to i3 event
-    let events = conn.subscribe([swayipc::EventType::Window])?;
+    let events = conn.subscribe([swayipc::EventType::Workspace, swayipc::EventType::Window])?;
 
     for event in events {
         let server_ev = match event {
@@ -173,6 +173,7 @@ pub fn focus_server() -> Result<(), Box<dyn Error + Send + Sync>> {
 
     let mut conn = swayipc::Connection::new()?;
     let mut windows = VecDeque::new();
+    let mut empty_focus = true;
     utils::get_focused_window(&conn.get_tree()?)
         .map(|wid| {
             windows.push_front(wid);
@@ -191,25 +192,36 @@ pub fn focus_server() -> Result<(), Box<dyn Error + Send + Sync>> {
                             windows.retain(|v| *v != cid);
                             windows.push_front(cid);
                             windows.truncate(BUFFER_SIZE);
+                            empty_focus = false;
                         }
                         swayipc::WindowChange::Close => {
                             let cid = e.container.id;
 
                             // remove
                             windows.retain(|v| *v != cid);
+                            empty_focus = true;
                         }
                         _ => {}
+                    }
+                } else if let swayipc::Event::Workspace(e) = e {
+                    if e.change == swayipc::WorkspaceChange::Focus {
+                        empty_focus = true;
                     }
                 }
             }
             ServerEvent::SwitchTo(n) => {
+                let n = if empty_focus {
+                    std::cmp::max(0, n - 1)
+                } else {
+                    n
+                };
                 focus_nth(&mut conn, &windows, n)
                     .map_err(|e| eprintln!("{}", e))
                     .ok();
             }
             ServerEvent::GetHistory(chan) => {
                 let windows = Vec::from_iter(windows.iter().cloned());
-                chan.send(windows)?;
+                chan.send((windows, empty_focus))?;
             }
             ServerEvent::Stop(res) => {
                 res?;
