@@ -74,7 +74,7 @@ fn choose_with_menu(
         let stdin = child
             .stdin
             .as_mut()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "no stdin"))?;
+            .ok_or_else(|| io::Error::other("no stdin"))?;
         for w in windows {
             let line = utils::window_format_line(w, Some(icons_map));
             stdin.write_all(line.as_bytes())?;
