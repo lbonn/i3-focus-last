@@ -14,6 +14,6 @@ byte-strings = "0.3"
 swayipc = "3.0.0"
 
 [build-dependencies]
-bindgen = "0.69"
+bindgen = "0.72"
 cc = "1"
 pkg-config = "0.3"
