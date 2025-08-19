@@ -8,7 +8,7 @@ use std::ffi::CStr;
 use std::os::raw::c_char;
 
 use i3_focus_last::utils;
-use i3_focus_last::{get_windows_by_history, WindowsSortStyle};
+use i3_focus_last::{WindowsSortStyle, get_windows_by_history};
 
 use rofi::helpers::{find_arg_bool, rofi_view_hide, token_match_pattern};
 use rofi::{CRofiMode, EntryStateFlags, MenuReturn, ModeMode, ModeType, Pattern, RofiMode};
@@ -90,10 +90,10 @@ impl RofiMode for Mode {
             if let Some(name) = win.name.as_ref() {
                 m = token_match_pattern(pat, name);
             }
-            if m == (pat.invert != 0) {
-                if let Some(appid) = win.app_id.as_ref() {
-                    m = token_match_pattern(pat, appid);
-                }
+            if m == (pat.invert != 0)
+                && let Some(appid) = win.app_id.as_ref()
+            {
+                m = token_match_pattern(pat, appid);
             }
 
             if !m {
@@ -111,5 +111,5 @@ impl RofiMode for Mode {
     }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static mut mode: CRofiMode = rofi::rofi_c_mode::<Mode>();

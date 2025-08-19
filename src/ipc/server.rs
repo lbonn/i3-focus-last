@@ -15,7 +15,7 @@ use serde::de::Deserialize;
 
 use gumdrop::Options;
 
-use crate::ipc::{socket_filename, Cmd};
+use crate::ipc::{Cmd, socket_filename};
 use crate::utils;
 
 static BUFFER_SIZE: usize = 100;
@@ -40,10 +40,10 @@ where
 
         let r = conn.run_command(format!("[con_id={}] focus", wid).as_str())?;
 
-        if let Some(o) = r.first() {
-            if o.is_ok() {
-                return Ok(());
-            }
+        if let Some(o) = r.first()
+            && o.is_ok()
+        {
+            return Ok(());
         }
     }
 
@@ -203,10 +203,10 @@ pub fn focus_server() -> Result<(), Box<dyn Error + Send + Sync>> {
                         }
                         _ => {}
                     }
-                } else if let swayipc::Event::Workspace(e) = e {
-                    if e.change == swayipc::WorkspaceChange::Focus {
-                        empty_focus = true;
-                    }
+                } else if let swayipc::Event::Workspace(e) = e
+                    && e.change == swayipc::WorkspaceChange::Focus
+                {
+                    empty_focus = true;
                 }
             }
             ServerEvent::SwitchTo(n) => {

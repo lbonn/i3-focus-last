@@ -10,7 +10,7 @@ use std::str::from_utf8;
 
 use i3_focus_last::utils;
 use i3_focus_last::{
-    focus_nth_last_client, focus_server, get_windows_by_history, ServerOpts, WindowsSortStyle,
+    ServerOpts, WindowsSortStyle, focus_nth_last_client, focus_server, get_windows_by_history,
 };
 
 #[derive(Debug, Options)]

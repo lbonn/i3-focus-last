@@ -75,10 +75,10 @@ pub mod utils {
     pub fn node_display_id(node: &swayipc::Node) -> Option<String> {
         if let Some(aid) = &node.app_id {
             return Some(aid.to_string());
-        } else if let Some(props) = &node.window_properties {
-            if let Some(c) = &props.class {
-                return Some(c.to_string());
-            }
+        } else if let Some(props) = &node.window_properties
+            && let Some(c) = &props.class
+        {
+            return Some(c.to_string());
         }
 
         None
@@ -91,10 +91,10 @@ pub mod utils {
         icons_map: &HashMap<String, String>,
     ) -> Option<String> {
         if let Some(disp_id) = node_display_id(node).as_ref() {
-            if let Some(icon) = icons_map.get(disp_id) {
-                if !icon.is_empty() {
-                    return Some(icon.clone());
-                }
+            if let Some(icon) = icons_map.get(disp_id)
+                && !icon.is_empty()
+            {
+                return Some(icon.clone());
             }
             return Some(disp_id.clone());
         }
@@ -210,4 +210,4 @@ pub fn get_windows_by_history(
 
 // re-exports
 pub use crate::ipc::client::focus_nth_last_client;
-pub use crate::ipc::server::{focus_server, ServerOpts};
+pub use crate::ipc::server::{ServerOpts, focus_server};

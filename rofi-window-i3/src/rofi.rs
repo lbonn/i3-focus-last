@@ -1,4 +1,4 @@
-use std::alloc::{dealloc, Layout};
+use std::alloc::{Layout, dealloc};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::error::Error;
@@ -215,33 +215,39 @@ impl c::rofi_mode {
 }
 
 unsafe extern "C" fn _init<T: RofiMode>(mc: *mut c::rofi_mode) -> c_int {
-    (*mc).display_name = T::DISPLAY_NAME.to_rofi_str();
+    unsafe {
+        (*mc).display_name = T::DISPLAY_NAME.to_rofi_str();
 
-    match ModeData::<T>::init() {
-        Ok(d) => {
-            (*mc).private_data = Box::into_raw(Box::new(d)) as *mut c_void;
-            1
-        }
-        Err(e) => {
-            eprintln!("error: {}", e);
-            0
+        match ModeData::<T>::init() {
+            Ok(d) => {
+                (*mc).private_data = Box::into_raw(Box::new(d)) as *mut c_void;
+                1
+            }
+            Err(e) => {
+                eprintln!("error: {}", e);
+                0
+            }
         }
     }
 }
 
 unsafe extern "C" fn _destroy<T: RofiMode>(mc: *mut c::rofi_mode) {
-    if (*mc).private_data.is_null() {
-        return;
-    }
+    unsafe {
+        if (*mc).private_data.is_null() {
+            return;
+        }
 
-    ptr::drop_in_place((*mc).private_data as *mut ModeData<T>);
-    dealloc((*mc).private_data as *mut u8, Layout::new::<ModeData<T>>());
-    (*mc).private_data = ptr::null_mut();
+        ptr::drop_in_place((*mc).private_data as *mut ModeData<T>);
+        dealloc((*mc).private_data as *mut u8, Layout::new::<ModeData<T>>());
+        (*mc).private_data = ptr::null_mut();
+    }
 }
 
 unsafe extern "C" fn _get_num_entries<T: RofiMode>(mc: *const c::rofi_mode) -> c_uint {
-    let m = (*mc).get::<T>();
-    m.mode.get_num_entries().try_into().unwrap()
+    unsafe {
+        let m = (*mc).get::<T>();
+        m.mode.get_num_entries().try_into().unwrap()
+    }
 }
 
 unsafe extern "C" fn _get_display_value<T: RofiMode>(
@@ -251,18 +257,20 @@ unsafe extern "C" fn _get_display_value<T: RofiMode>(
     _attribute_list: *mut *mut c::GList,
     get_entry: c_int,
 ) -> *mut c_char {
-    let m = (*mc).get::<T>();
+    unsafe {
+        let m = (*mc).get::<T>();
 
-    if let Some((dv, flags)) = m.mode.get_display_value(selected_line as usize) {
-        *state = flags.bits() as i32;
+        if let Some((dv, flags)) = m.mode.get_display_value(selected_line as usize) {
+            *state = flags.bits() as i32;
 
-        if get_entry == 0 {
-            return ptr::null_mut();
+            if get_entry == 0 {
+                return ptr::null_mut();
+            }
+
+            dv.to_rofi_str()
+        } else {
+            ptr::null_mut()
         }
-
-        dv.to_rofi_str()
-    } else {
-        ptr::null_mut()
     }
 }
 
@@ -272,16 +280,18 @@ unsafe extern "C" fn _result<T: RofiMode>(
     _input: *mut *mut c_char,
     selected_line: c_uint,
 ) -> c::ModeMode {
-    let m = (*mc).get::<T>();
+    unsafe {
+        let m = (*mc).get::<T>();
 
-    // TODO: pass input
+        // TODO: pass input
 
-    match m.mode.result(
-        MenuReturn::from_bits(mretv as u32).unwrap(),
-        selected_line.try_into().unwrap(),
-    ) {
-        Some(e) => e as c_uint,
-        None => (mretv as u32) & c::MenuReturn_MENU_LOWER_MASK,
+        match m.mode.result(
+            MenuReturn::from_bits(mretv as u32).unwrap(),
+            selected_line.try_into().unwrap(),
+        ) {
+            Some(e) => e as c_uint,
+            None => (mretv as u32) & c::MenuReturn_MENU_LOWER_MASK,
+        }
     }
 }
 
@@ -290,16 +300,18 @@ unsafe extern "C" fn _token_match<T: RofiMode>(
     tokens: *mut *mut c::rofi_int_matcher,
     selected_line: c_uint,
 ) -> c_int {
-    let mut tokenv: Vec<Pattern> = vec![];
-    let mut t = tokens;
-    while !(*t).is_null() {
-        tokenv.push(**t);
-        t = t.add(1);
-    }
+    unsafe {
+        let mut tokenv: Vec<Pattern> = vec![];
+        let mut t = tokens;
+        while !(*t).is_null() {
+            tokenv.push(**t);
+            t = t.add(1);
+        }
 
-    let m = (*mc).get::<T>();
-    m.mode
-        .token_match(tokenv.as_slice(), selected_line as usize) as c_int
+        let m = (*mc).get::<T>();
+        m.mode
+            .token_match(tokenv.as_slice(), selected_line as usize) as c_int
+    }
 }
 
 unsafe extern "C" fn _get_icon<T: RofiMode>(
@@ -307,33 +319,35 @@ unsafe extern "C" fn _get_icon<T: RofiMode>(
     selected_line: c_uint,
     height: c_uint,
 ) -> *mut c::cairo_surface_t {
-    let m = (*mc).get::<T>();
+    unsafe {
+        let m = (*mc).get::<T>();
 
-    let entry = IconCacheEntry {
-        line: selected_line as usize,
-        height: height as usize,
-        scale: 1, // TODO: handle this "cleanly"
-    };
+        let entry = IconCacheEntry {
+            line: selected_line as usize,
+            height: height as usize,
+            scale: 1, // TODO: handle this "cleanly"
+        };
 
-    let mut icon_cache = m.icon_cache.borrow_mut();
+        let mut icon_cache = m.icon_cache.borrow_mut();
 
-    let mut icon_uid = None;
-    if let Some(uid) = icon_cache.get(&entry) {
-        icon_uid = Some(*uid)
-    } else if let Some(query) = m
-        .mode
-        .icon_query(selected_line as usize)
-        .map(|v| CString::new(v).unwrap())
-    {
-        let uid = c::rofi_icon_fetcher_query(query.as_ptr(), height as ::std::os::raw::c_int);
+        let mut icon_uid = None;
+        if let Some(uid) = icon_cache.get(&entry) {
+            icon_uid = Some(*uid)
+        } else if let Some(query) = m
+            .mode
+            .icon_query(selected_line as usize)
+            .map(|v| CString::new(v).unwrap())
+        {
+            let uid = c::rofi_icon_fetcher_query(query.as_ptr(), height as ::std::os::raw::c_int);
 
-        icon_cache.insert(entry, uid);
-        icon_uid = Some(uid);
+            icon_cache.insert(entry, uid);
+            icon_uid = Some(uid);
+        }
+
+        icon_uid
+            .map(|u| c::rofi_icon_fetcher_get(u))
+            .unwrap_or(ptr::null_mut())
     }
-
-    icon_uid
-        .map(|u| c::rofi_icon_fetcher_get(u))
-        .unwrap_or(ptr::null_mut())
 }
 
 pub const fn rofi_c_mode<T: RofiMode>() -> c::rofi_mode {

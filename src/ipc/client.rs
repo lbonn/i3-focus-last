@@ -3,7 +3,7 @@ use std::os::unix::net::UnixStream;
 
 use std::io::Write;
 
-use crate::ipc::{socket_filename, Cmd};
+use crate::ipc::{Cmd, socket_filename};
 
 /// Focus the last nth window
 ///
