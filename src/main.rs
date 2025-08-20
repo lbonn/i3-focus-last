@@ -60,7 +60,7 @@ fn choose_with_menu(
     menu: &str,
     icons_map: &HashMap<String, String>,
     windows: &[swayipc::Node],
-) -> Result<usize, Box<dyn Error + Send + Sync>> {
+) -> Result<Option<usize>, Box<dyn Error + Send + Sync>> {
     // TODO: better split
     let cmd: Vec<&str> = menu.split(' ').collect();
 
@@ -68,7 +68,8 @@ fn choose_with_menu(
         .args(cmd[1..].iter())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .spawn()?;
+        .spawn()
+        .map_err(|e| io::Error::other(format!("Could not start menu command `{}`: {}", menu, e)))?;
 
     {
         let stdin = child
@@ -85,7 +86,12 @@ fn choose_with_menu(
     let s = from_utf8(out.stdout.as_slice())?;
     let s: String = s.chars().filter(|x| !matches!(x, ' ' | '\n')).collect();
 
-    Ok(s.parse()?)
+    if s.is_empty() {
+        // we get an empty response when user cancels
+        return Ok(None);
+    }
+
+    Ok(Some(s.parse()?))
 }
 
 fn focus_menu(menu_opts: MenuOpts) -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -96,8 +102,14 @@ fn focus_menu(menu_opts: MenuOpts) -> Result<(), Box<dyn Error + Send + Sync>> {
     let ordered_windows = get_windows_by_history(&mut conn, WindowsSortStyle::CurrentLast)?;
 
     let choice = choose_with_menu(&menu_opts.menu, &icons_map, &ordered_windows)?;
-    let wid = ordered_windows[choice].id;
-    conn.run_command(format!("[con_id={}] focus", wid).as_str())?;
+
+    match choice {
+        None => (),
+        Some(choice) => {
+            let wid = ordered_windows[choice].id;
+            conn.run_command(format!("[con_id={}] focus", wid).as_str())?;
+        }
+    }
 
     Ok(())
 }
