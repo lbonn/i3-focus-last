@@ -1,5 +1,5 @@
 use std::alloc::{Layout, dealloc};
-use std::cell::RefCell;
+use std::cell::UnsafeCell;
 use std::collections::HashMap;
 use std::error::Error;
 use std::ffi::{CStr, CString};
@@ -197,13 +197,13 @@ type IconCache = HashMap<IconCacheEntry, c_uint>;
 
 struct ModeData<T: RofiMode> {
     mode: T,
-    icon_cache: RefCell<IconCache>,
+    icon_cache: UnsafeCell<IconCache>,
 }
 
 impl<T: RofiMode> ModeData<T> {
     fn init() -> Result<Self, Box<dyn Error + Send + Sync>> {
         let mode = T::init()?;
-        let icon_cache = RefCell::new(HashMap::new());
+        let icon_cache = UnsafeCell::new(HashMap::new());
         Ok(ModeData { mode, icon_cache })
     }
 }
@@ -328,7 +328,7 @@ unsafe extern "C" fn _get_icon<T: RofiMode>(
             scale: 1, // TODO: handle this "cleanly"
         };
 
-        let mut icon_cache = m.icon_cache.borrow_mut();
+        let icon_cache = &mut *m.icon_cache.get();
 
         let mut icon_uid = None;
         if let Some(uid) = icon_cache.get(&entry) {

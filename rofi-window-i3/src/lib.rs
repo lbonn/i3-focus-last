@@ -17,9 +17,9 @@ use rofi::{CRofiMode, EntryStateFlags, MenuReturn, ModeMode, ModeType, Pattern, 
 extern crate byte_strings;
 
 struct Mode {
-    pub conn: RefCell<swayipc::Connection>,
-    pub windows: Vec<swayipc::Node>,
-    pub icons_map: HashMap<String, String>,
+    conn: RefCell<swayipc::Connection>,
+    windows: Vec<swayipc::Node>,
+    icons_map: HashMap<String, String>,
 }
 
 impl RofiMode for Mode {
